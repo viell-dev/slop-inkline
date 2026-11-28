@@ -174,6 +174,38 @@ function among(colours: number[][], r: number, g: number, b: number) {
 }
 
 /**
+ * Where the surface shows anything but its guides and grid, in its device
+ * pixels: the ink, or a picture with no ink over it; or undefined when it
+ * shows nothing else.
+ */
+export function drawnBox(
+  canvas: HTMLCanvasElement,
+): { left: number; top: number; right: number; bottom: number } | undefined {
+  const context = canvas.getContext("2d");
+  if (context === null) throw new Error("no 2D canvas context");
+  const { width, height } = canvas;
+  const { data } = context.getImageData(0, 0, width, height);
+  const guides = guideColours(canvas);
+  let left = width;
+  let top = height;
+  let right = -1;
+  let bottom = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const at = (y * width + x) * 4;
+      if ((data[at + 3] ?? 0) === 0) continue;
+      const [r = 0, g = 0, b = 0] = data.subarray(at, at + 3);
+      if (among(guides, r, g, b)) continue;
+      left = Math.min(left, x);
+      right = Math.max(right, x + 1);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y + 1);
+    }
+  }
+  return right < 0 ? undefined : { left, top, right, bottom };
+}
+
+/**
  * Where the surface shows a red or blue picture, in its device pixels, with
  * the opacity of the pixel in the middle; or undefined when it shows none.
  */

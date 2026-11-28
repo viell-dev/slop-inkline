@@ -9,6 +9,18 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Changed
+
+- A picture to trace over now comes at its own size, one pixel of the drawing to
+  each of its pixels, rather than as tall as a capital letter, and is scaled
+  down only when it is wider or taller than the drawing area shows, to fit there
+  whole. A symbol's own image, chosen as the picture, lies where its strokes
+  are, one line tall from the top of the drawing area to its bottom, rather than
+  shrunk to between the cap height and the baseline. With **Move** on, the wheel
+  scales the picture about its middle, wherever the pointer is, and by about a
+  twentieth a notch rather than a fifth; + and − take the same smaller steps
+  ([#472](https://github.com/viell-dev/slop-inkline/issues/472)).
+
 ### Fixed
 
 - A draft opened as a new symbol, from **Inkline: Recover drafts** or a symbol

@@ -2,27 +2,130 @@ import { describe, expect, it } from "vitest";
 import {
   fitWithin,
   isPicturePath,
+  isSymbolImage,
   movePicture,
   openLinkPath,
   placePicture,
+  placeSymbolImage,
+  scaleAboutMiddle,
   scaleLimits,
   scalePicture,
   wheelFactor,
 } from "../../../src/editor/reference.ts";
+import { recordChunkType } from "../../../src/format/ink-file.ts";
+import { writeChunks, type Chunk } from "../../../src/format/png.ts";
+import { lineBox } from "../../../src/ink/geometry.ts";
+
+/** A drawing area as a new symbol's surface shows it, 576 × 192 pixels. */
+const area = { left: 0, top: 0, right: 576, bottom: 192 };
+/** Its middle across, halfway between a cap height of 54 and the baseline. */
+const middle = { x: 288, y: 99 };
 
 describe("placePicture", () => {
-  it("fits the picture's height between the lines, centred", () => {
-    // 200 × 100 pixels, between 54 and 144: 0.9 document pixels each.
-    expect(placePicture(200, 100, 54, 144, 500)).toEqual({
-      x: 410,
-      y: 54,
-      scale: 0.9,
+  it("keeps a picture that fits at its own size, centred on the middle", () => {
+    expect(placePicture(40, 20, area, middle)).toEqual({
+      x: 268,
+      y: 89,
+      scale: 1,
+    });
+    // As large as the area, it fills it.
+    expect(placePicture(576, 192, area, middle)).toEqual({
+      x: 0,
+      y: 0,
+      scale: 1,
+    });
+  });
+
+  it("scales a larger picture down to fit, by the side that is too large", () => {
+    // Twice as wide as the area: half the size, centred across.
+    expect(placePicture(1152, 100, area, middle)).toEqual({
+      x: 0,
+      y: 74,
+      scale: 0.5,
+    });
+    // Twice as tall: half the size, as tall as the area.
+    expect(placePicture(100, 384, area, middle)).toEqual({
+      x: 263,
+      y: 0,
+      scale: 0.5,
+    });
+  });
+
+  it("moves it as little as keeps it inside the area", () => {
+    // 190 pixels tall about 99 would reach 194: up 2, to the area's bottom.
+    expect(placePicture(10, 190, area, middle).y).toBe(2);
+    // About a middle near the bottom, it rests on the bottom.
+    expect(placePicture(10, 50, area, { x: 288, y: 180 }).y).toBe(142);
+    // Across, near either side.
+    expect(placePicture(100, 10, area, { x: 10, y: 99 }).x).toBe(0);
+    expect(placePicture(100, 10, area, { x: 570, y: 99 }).x).toBe(476);
+  });
+
+  it("fits within an area anywhere along the drawing", () => {
+    // A zoomed view that shows from 1000 to 1288.
+    const zoomed = { left: 1000, top: 0, right: 1288, bottom: 192 };
+    expect(placePicture(576, 96, zoomed, { x: 1144, y: 99 })).toEqual({
+      x: 1000,
+      y: 75,
+      scale: 0.5,
     });
   });
 
   it("keeps the scale within its limits", () => {
-    expect(placePicture(1, 1, 0, 1000, 0).scale).toBe(scaleLimits.max);
-    expect(placePicture(100_000, 100_000, 0, 1, 0).scale).toBe(scaleLimits.min);
+    const huge = 100 * 64 * 576;
+    expect(placePicture(huge, 1, area, middle).scale).toBe(scaleLimits.min);
+  });
+});
+
+describe("placeSymbolImage", () => {
+  it("puts a symbol's image over its own line, from its left edge", () => {
+    expect(placeSymbolImage(lineBox.height)).toEqual({ x: 0, y: 0, scale: 1 });
+  });
+
+  it("shows an image of another height one line tall, as the format says", () => {
+    expect(placeSymbolImage(2 * lineBox.height)).toEqual({
+      x: 0,
+      y: 0,
+      scale: 0.5,
+    });
+  });
+});
+
+describe("isSymbolImage", () => {
+  /** A 1 × 1 PNG with the chunks `extra` after its header. */
+  function png(...extra: Chunk[]): Uint8Array {
+    const header = new Uint8Array(13);
+    const view = new DataView(header.buffer);
+    view.setUint32(0, 1);
+    view.setUint32(4, 1);
+    header.set([8, 6, 0, 0, 0], 8);
+    return writeChunks([
+      { type: "IHDR", data: header },
+      ...extra,
+      // The image data need not decode: only the chunks are read.
+      { type: "IDAT", data: new Uint8Array([0]) },
+      { type: "IEND", data: new Uint8Array() },
+    ]);
+  }
+
+  it("knows a PNG with a record chunk, whatever the record holds", () => {
+    expect(
+      isSymbolImage(png({ type: recordChunkType, data: new Uint8Array(8) })),
+    ).toBe(true);
+    // Even one this version cannot read.
+    expect(
+      isSymbolImage(png({ type: recordChunkType, data: new Uint8Array() })),
+    ).toBe(true);
+  });
+
+  it("takes a PNG with no record chunk, and what is no PNG, for no symbol's", () => {
+    expect(
+      isSymbolImage(png({ type: "tEXt", data: new Uint8Array([65, 0, 66]) })),
+    ).toBe(false);
+    expect(isSymbolImage(new TextEncoder().encode("not a picture"))).toBe(
+      false,
+    );
+    expect(isSymbolImage(png().subarray(0, 30))).toBe(false);
   });
 });
 
@@ -56,12 +159,37 @@ describe("scalePicture", () => {
   });
 });
 
+describe("scaleAboutMiddle", () => {
+  it("keeps the picture's middle where it is", () => {
+    // 40 × 20 pixels from (100, 50): its middle is at (120, 60).
+    const after = scaleAboutMiddle({ x: 100, y: 50, scale: 1 }, 40, 20, 2);
+    expect(after).toEqual({ x: 80, y: 40, scale: 2 });
+  });
+
+  it("keeps it there at the limits", () => {
+    const after = scaleAboutMiddle({ x: 0, y: 0, scale: 32 }, 1, 1, 4);
+    expect(after).toEqual({ x: -16, y: -16, scale: 64 });
+  });
+});
+
 describe("wheelFactor", () => {
   it("grows for a turn away, shrinks for one towards, and undoes itself", () => {
     expect(wheelFactor(-100)).toBeGreaterThan(1);
     expect(wheelFactor(100)).toBeLessThan(1);
     expect(wheelFactor(100) * wheelFactor(-100)).toBeCloseTo(1, 12);
     expect(wheelFactor(0)).toBe(1);
+  });
+
+  it("scales by about a twentieth for a notch, so that 14 notches double", () => {
+    expect(wheelFactor(-100)).toBeCloseTo(Math.exp(0.05), 12);
+    expect(wheelFactor(-100) ** 14).toBeGreaterThan(2);
+    expect(wheelFactor(-100) ** 13).toBeLessThan(2);
+  });
+
+  it("goes by the pixels turned, however they come", () => {
+    // A trackpad's small turns, as one turn of their total.
+    expect(wheelFactor(-4) ** 25).toBeCloseTo(wheelFactor(-100), 12);
+    expect(wheelFactor(-1) ** 2).toBeCloseTo(wheelFactor(-2), 12);
   });
 });
 

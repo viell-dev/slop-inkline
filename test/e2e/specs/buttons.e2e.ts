@@ -68,7 +68,7 @@ const usual: Readonly<Record<string, string>> = {
   next: "Next: save and draw the next one (Mod+Shift+Enter)",
   help: "Help",
   choose: "Choose picture…: open a picture file to trace over",
-  move: "Move: drag the picture or use the arrow keys; the wheel or + and − scale it (M)",
+  move: "Move: drag the picture or use the arrow keys; the wheel or + and − scale it about its middle (M)",
   ink: "Make ink: turn the picture into the symbol's ink, by a threshold (I)",
   remove: "Remove picture",
   light: "Light ink: the ink is lighter than the ground around it",

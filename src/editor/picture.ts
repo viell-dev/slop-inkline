@@ -26,9 +26,11 @@ import type { DrawableBase } from "../ink/render.ts";
 import { pictureHints } from "./buttons.ts";
 import {
   decodePicture,
+  isSymbolImage,
   movePicture,
   placePicture,
-  scalePicture,
+  placeSymbolImage,
+  scaleAboutMiddle,
   wheelFactor,
   type Placement,
 } from "./reference.ts";
@@ -68,7 +70,11 @@ export function dragsPicture(event: DragEvent): boolean {
   return types.includes("Files") || types.includes("text/uri-list");
 }
 
-/** How much + and − scale a picture: as much as a notch of the wheel. */
+/**
+ * How much + and − scale a picture: as much as a notch of the wheel, so that
+ * the keys and the wheel step through the same sizes, each fine enough to
+ * find the size wanted.
+ */
 const keyScale = wheelFactor(-100);
 
 /**
@@ -332,15 +338,23 @@ export class PictureTracing {
   }
 
   /**
-   * Reads and decodes a pasted or dropped picture and traces over it, in
-   * place of any other, as tall as a capital letter between the guides and
-   * in the middle of the surface. Only the picture asked for last is taken.
+   * Reads and decodes a pasted, dropped, or chosen picture and traces over
+   * it, in place of any other. A symbol's own image lies over the strokes it
+   * shows, from the top of the line box to its bottom ({@link
+   * placeSymbolImage}). Any other picture comes at its own size, or scaled
+   * down to fit what the surface shows if larger, in the middle of the
+   * surface and where a capital letter's middle is between the guides
+   * ({@link placePicture}). Only the picture asked for last is taken.
    */
   async trace(file: Blob | Promise<Blob>): Promise<void> {
     const request = ++this.#requests;
     let image: ImageBitmap;
+    let symbol: boolean;
     try {
-      image = await decodePicture(await file);
+      const blob = await file;
+      // Read first, so that a read that fails leaves no picture to close.
+      symbol = isSymbolImage(new Uint8Array(await blob.arrayBuffer()));
+      image = await decodePicture(blob);
     } catch {
       if (request === this.#requests) {
         this.#host.say("Not traced: Inkline cannot read this picture");
@@ -356,20 +370,22 @@ export class PictureTracing {
       image.close();
       return;
     }
-    const top =
+    const capHeight =
       this.#host.capHeight() ?? lineBox.baseline - 0.7 * lineBox.pxPerEm;
     const { width, height } = image;
+    const { left, right } = view.visible;
     this.#setPicture({
       image,
       width,
       height,
-      placement: placePicture(
-        width,
-        height,
-        top,
-        lineBox.baseline,
-        view.center,
-      ),
+      placement: symbol
+        ? placeSymbolImage(height)
+        : placePicture(
+            width,
+            height,
+            { left, top: 0, right, bottom: lineBox.height },
+            { x: view.center, y: (capHeight + lineBox.baseline) / 2 },
+          ),
     });
     this.#host.say(
       "Tracing over the picture. Move (M), then drag it or use the arrow keys; the wheel or + and − scale it",
@@ -447,26 +463,20 @@ export class PictureTracing {
     this.#place(movePicture(picture.placement, dx, dy));
   }
 
-  /** Scales the picture by `factor` about `x`, `y`, as the wheel does. */
-  scaleAbout(factor: number, x: number, y: number): void {
+  /**
+   * Scales the picture by `factor` about its middle, as the wheel does,
+   * wherever the pointer is.
+   */
+  scaleBy(factor: number): void {
     const picture = this.#picture;
     if (picture === undefined) return;
-    this.#place(scalePicture(picture.placement, factor, x, y));
+    const { placement, width, height } = picture;
+    this.#place(scaleAboutMiddle(placement, width, height, factor));
   }
 
   /** Scales the picture a step, `larger` or smaller, about its middle. */
   scaleStep(larger: boolean): void {
-    const picture = this.#picture;
-    if (picture === undefined) return;
-    const { x, y, scale } = picture.placement;
-    this.#place(
-      scalePicture(
-        picture.placement,
-        larger ? keyScale : 1 / keyScale,
-        x + (picture.width * scale) / 2,
-        y + (picture.height * scale) / 2,
-      ),
-    );
+    this.scaleBy(larger ? keyScale : 1 / keyScale);
   }
 
   /**

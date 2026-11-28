@@ -93,11 +93,13 @@ moment.
 
 Closing the editor with unsaved changes asks first. While **Move** is on, the
 arrow keys move the picture, with Shift by one column of the grid, and + and −
-scale it. Otherwise, the up and down arrow keys move the drawing, and while
-**Zoom** is on, the left and right arrow keys, and the wheel, move along it. Tab
-goes from the name field to the button that shows the readings and translations;
-Enter or Space on it opens their fields and moves there, where Enter starts
-another value. A second press closes them and returns to the drawing.
+scale it about its middle; **Unreleased**, by about a twentieth a press, as a
+notch of the wheel does. Otherwise, the up and down arrow keys move the drawing,
+and while **Zoom** is on, the left and right arrow keys, and the wheel, move
+along it. Tab goes from the name field to the button that shows the readings and
+translations; Enter or Space on it opens their fields and moves there, where
+Enter starts another value. A second press closes them and returns to the
+drawing.
 
 Copy from and Next are only in the editor for a new symbol. Make ink's threshold
 is a slider, which its arrow keys move; **Light ink**, **Apply**, and **Cancel**

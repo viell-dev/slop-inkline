@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
+import { wheelFactor } from "../../../src/editor/reference.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   inklineOn,
@@ -17,6 +18,7 @@ import {
   undoStubs,
   waitForNext,
   startOver,
+  surface,
   symbolFiles,
   clickTop,
   waitForStatus,
@@ -99,12 +101,39 @@ async function dropMarked(
 }
 
 /**
- * Whether the surface shows ink at `fx`, `fy` of the way across and down a
- * square picture where a new symbol's picture first sits.
+ * How many times larger than its own pixels {@link enlarge} shows a picture:
+ * between 2 and 3, so that Make ink samples it three times finer.
  */
-async function inkInPicture(fx: number, fy: number): Promise<boolean> {
+const enlarged = 2.5;
+
+/**
+ * Scales the picture up {@link enlarged} times about its middle, with the
+ * wheel, as a person enlarges a small screenshot: a picture comes at its own
+ * size.
+ */
+async function enlarge(): Promise<void> {
+  await browser.keys(["m"]);
+  // A turn of this many pixels scales the picture by `enlarged`.
+  const deltaY = Math.round(Math.log(enlarged) / Math.log(wheelFactor(-1)));
+  await browser
+    .action("wheel")
+    .scroll({ origin: surface(), x: 0, y: 0, deltaX: 0, deltaY: -deltaY })
+    .perform();
+  await browser.keys(["m"]);
+}
+
+/**
+ * Whether the surface shows ink at `fx`, `fy` of the way across and down a
+ * square picture `side` pixels across where a new symbol's surface shows it,
+ * about the middle of a capital.
+ */
+async function inkInPicture(
+  fx: number,
+  fy: number,
+  side: number,
+): Promise<boolean> {
   const { factor, capTop } = await surfaceLayout();
-  const side = 144 - capTop;
+  const top = (capTop + 144) / 2 - side / 2;
   return browser.execute(
     (x, y) => {
       const canvas = activeDocument.querySelector(
@@ -116,7 +145,7 @@ async function inkInPicture(fx: number, fy: number): Promise<boolean> {
       return window.inklineTest.pictures.inkAt(canvas, x, y).ink;
     },
     Math.round((288 - side / 2 + fx * side) * factor),
-    Math.round((capTop + fy * side) * factor),
+    Math.round((top + fy * side) * factor),
   );
 }
 
@@ -206,6 +235,7 @@ describe("The editor", function () {
       );
       expect(await makingInk()).toBe(false);
       await pasteMarked(...squareOn("white", "black"));
+      await enlarge();
       await browser.keys(["i"]);
       expect(await makingInk()).toBe(true);
       expect(await pressed("ink")).toBe("true");
@@ -242,14 +272,28 @@ describe("The editor", function () {
       );
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
-      // The square, sampled three times finer than the picture: as tall as a
-      // capital, its 40 pixels are each over two document pixels.
+      // The square, sampled three times finer than the picture: enlarged, its
+      // 40 pixels are each over two document pixels.
       expect(await baseSize("001.ink.png")).toEqual([60, 60]);
+    });
+
+    it("makes ink of a picture at its own size from its own pixels", async function () {
+      await insert();
+      await pasteMarked(...squareOn("white", "black"));
+      await browser.keys(["i"]);
+      await browser.waitUntil(inkInMiddle);
+      await browser.$('[data-inkline-button="apply"]').click();
+      await waitForStatus("Made ink of the picture");
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      // A document pixel to each of the picture's: the square's 20.
+      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
     });
 
     it("makes light ink of a light symbol on a dark ground", async function () {
       await insert();
       await pasteMarked(...squareOn("black", "white"));
+      await enlarge();
       await browser.keys(["i"]);
       expect(await pressed("light")).toBe("true");
       await browser.waitUntil(inkInMiddle);
@@ -262,8 +306,8 @@ describe("The editor", function () {
 
     it("makes ink only of what the surface shows across", async function () {
       await insert();
-      // Three symbols in a row: as tall as a capital, only the middle one
-      // is on the surface.
+      // Three symbols in a row: enlarged, only the middle one is on the
+      // surface.
       const square = (x: number) => ({
         x,
         y: 10,
@@ -276,6 +320,7 @@ describe("The editor", function () {
         square(190),
         square(370),
       ]);
+      await enlarge();
       await browser.keys(["i"]);
       await browser.waitUntil(inkInMiddle);
       await browser.$('[data-inkline-button="apply"]').click();
@@ -308,6 +353,7 @@ describe("The editor", function () {
     it("makes the ink being previewed when saving, or says why it cannot", async function () {
       await insert();
       await pasteMarked(...squareOn("white", "rgb(128, 128, 128)"));
+      await enlarge();
       await browser.keys(["i"]);
       // No ink at this threshold: the save stops, and the editor stays.
       await setThreshold(100);
@@ -353,6 +399,7 @@ describe("The editor", function () {
     it("asks before closing over the ink being previewed, and Save makes it", async function () {
       await insert();
       await pasteMarked(...squareOn("white", "black"));
+      await enlarge();
       await browser.keys(["i"]);
       await browser.waitUntil(inkInMiddle);
       await browser.keys(["Escape"]);
@@ -364,11 +411,12 @@ describe("The editor", function () {
     it("makes ink of a light symbol on a transparent ground", async function () {
       await insert();
       await dropMarked(...squareOn("rgba(0, 0, 0, 0)", "white"));
+      await enlarge();
       await browser.keys(["i"]);
       expect(await pressed("light")).toBe("true");
       await browser.waitUntil(inkInMiddle);
       // The ground stays empty.
-      expect(await inkInPicture(0.1, 0.1)).toBe(false);
+      expect(await inkInPicture(0.1, 0.1, 40 * enlarged)).toBe(false);
       await browser.$('[data-inkline-button="apply"]').click();
       await waitForStatus("Made ink of the picture");
       await browser.keys(["Control", "Enter"]);
@@ -383,12 +431,12 @@ describe("The editor", function () {
       await pasteMarked(...squareOn("white", "black"));
       await browser.keys(["i"]);
       await browser.waitUntil(inkInMiddle);
-      expect(await inkInPicture(0.1, 0.1)).toBe(false);
+      expect(await inkInPicture(0.1, 0.1, 40)).toBe(false);
       await setThreshold(-1000);
       await browser.waitUntil(async () => !(await inkInMiddle()));
       expect(await thresholdSlider().getValue()).toBe("-16");
       await setThreshold(1000);
-      await browser.waitUntil(async () => inkInPicture(0.1, 0.1));
+      await browser.waitUntil(async () => inkInPicture(0.1, 0.1, 40));
       expect(await thresholdSlider().getValue()).toBe("272");
     });
 

@@ -345,15 +345,32 @@ reaches files in the vault and outside it. It shows faintly under the drawing,
 as tall as a capital letter, for you to draw over. It is never saved, nor kept
 in drafts.
 
+**Unreleased:** a picture comes at its own size instead, one pixel of the
+drawing to each of its pixels, so that a picture already the right size keeps
+it. One wider or taller than the drawing area shows is scaled down to fit there
+whole. It sits in the middle of the drawing area, about where a capital letter's
+middle is, moved as little as keeps it inside the area. A symbol's own image,
+such as one chosen from the vault, lies where its strokes are: one line tall,
+from the top of the drawing area to its bottom, however wide, with its left edge
+where the symbol's image starts, so that in that symbol's editor it lies exactly
+over its strokes. Inkline knows a symbol's image by the record it saves in the
+file; a copy without it, as a pasted copy of the image usually is, comes as any
+other picture, at its own size.
+
 **Move** (M) lets you drag the picture and scale it with the wheel; the arrow
 keys move it, and + and − scale it, from the keyboard. Press M again to draw.
-**Unreleased:** while you drag the picture, **Zoom**, **Fit**, and **Make ink**
-wait until you let go, as they do while you draw, so that the picture stays
-under the pointer. If the drawing moves under the pointer anyway while you drag,
-as when Obsidian's page zoom or the window's size changes, the picture comes
-back under the pointer as you go on or let go. **Remove picture** takes it away,
-and another paste replaces it. **Next** takes the picture on to the next symbol
-where it was, so that you can trace a whole inscription from one screenshot.
+**Unreleased:** the wheel scales the picture about its middle, wherever the
+pointer is, and in smaller steps: about a twentieth for a notch of a mouse
+wheel, so that about 14 notches double it, and a trackpad in proportion to how
+far you scroll. + and − scale it by as much as a notch, so that the keys and the
+wheel go through the same sizes. **Unreleased:** while you drag the picture,
+**Zoom**, **Fit**, and **Make ink** wait until you let go, as they do while you
+draw, so that the picture stays under the pointer. If the drawing moves under
+the pointer anyway while you drag, as when Obsidian's page zoom or the window's
+size changes, the picture comes back under the pointer as you go on or let go.
+**Remove picture** takes it away, and another paste replaces it. **Next** takes
+the picture on to the next symbol where it was, so that you can trace a whole
+inscription from one screenshot.
 
 ## Make ink of a picture
 
@@ -378,12 +395,12 @@ gave, and Undo takes it back. Saving while the preview shows makes that ink
 first.
 
 A picture shown larger than its own pixels, such as a small screenshot scaled up
-to a capital's height, is sampled at the drawing's finer resolution before the
-threshold applies. The ink's edges stay sharp instead of spreading across each
-enlarged pixel. Where that would take too many samples, as for a large picture
-enlarged across a wide drawing, it is sampled less finely, down to its own
-pixels. A picture with transparency keeps the soft edges of its own transparency
-when enlarged; see [Limits](./limits.md#files-and-sizes).
+to the size of the symbols you draw, is sampled at the drawing's finer
+resolution before the threshold applies. The ink's edges stay sharp instead of
+spreading across each enlarged pixel. Where that would take too many samples, as
+for a large picture enlarged across a wide drawing, it is sampled less finely,
+down to its own pixels. A picture with transparency keeps the soft edges of its
+own transparency when enlarged; see [Limits](./limits.md#files-and-sizes).
 
 A dim picture, such as a dark screenshot of a game, gets edges as sharp as a
 bright one's. The ink's edge narrows with the contrast between the two sides of
