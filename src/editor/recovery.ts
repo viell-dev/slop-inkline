@@ -5,12 +5,18 @@
 // draft only for a file that opens at the path the draft was kept for, and a
 // new symbol's draft, whether its note is gone or there, as the draft does not
 // say where in the note the symbol was to go. Which drafts they are, the name
-// a new symbol made of one starts with, and what Inkline says of each. Plain
-// functions with unit tests; symbols.ts reads the files and opens the editor.
+// a new symbol made of one starts with, the symbol its own draft is for, and
+// what Inkline says of each. Plain functions with unit tests; symbols.ts reads
+// the files and opens the editor.
 
 import type { InkDocument } from "../ink/document.ts";
 import { symbolStem } from "../notes/names.ts";
-import { restoresNothing, type CreatedFile, type Draft } from "./drafts.ts";
+import {
+  restoresNothing,
+  type CreatedFile,
+  type Draft,
+  type DraftTarget,
+} from "./drafts.ts";
 
 /**
  * Why a draft's own symbol does not offer it: the file it was kept for, or for
@@ -126,6 +132,31 @@ export function folderOf(path: string): string {
 /** The file a new symbol's draft names as its first save's, if any. */
 export function createdFile({ target }: Draft): CreatedFile | undefined {
   return target.kind === "new" ? target.file : undefined;
+}
+
+/**
+ * The symbol that the draft of a new symbol, opened on a draft kept for
+ * `found`, is for: the file at `made`, once its first save has made that file
+ * or taken it over, and until then `found`. For a new symbol's draft, that
+ * names `claim` too, the file its first save made or is making and what that
+ * save wrote there, as a new symbol's own first save names it, so that
+ * restoring the draft finishes that save with that file only while it holds
+ * what the save wrote. For a symbol's draft, it names no such file: the editor
+ * of whatever is at a symbol's path offers its drafts, so a draft that named
+ * the path its first save was about to make, before the file was there, would
+ * be offered as its own by a symbol that came there instead, as when Obsidian
+ * stops before that save is refused for it (#487).
+ */
+export function recoveredTarget(
+  found: DraftTarget,
+  made: string | undefined,
+  claim: CreatedFile | undefined,
+): DraftTarget {
+  if (made !== undefined) return { kind: "file", path: made };
+  if (found.kind === "file") return found;
+  return claim === undefined
+    ? { kind: "new", note: found.note }
+    : { kind: "new", note: found.note, file: claim };
 }
 
 /**

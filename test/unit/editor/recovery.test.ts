@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { Draft, DraftTarget } from "../../../src/editor/drafts.ts";
+import {
+  DraftStore,
+  type Draft,
+  type DraftTarget,
+  type VaultStorage,
+} from "../../../src/editor/drafts.ts";
 import {
   createdFile,
   folderOf,
@@ -9,6 +14,7 @@ import {
   listedSearchTexts,
   listedPlace,
   recoveredName,
+  recoveredTarget,
   recoveryQuestion,
   type AsNewSymbol,
   type FileState,
@@ -213,6 +219,82 @@ describe("createdFile", () => {
     expect(createdFile(newSymbol({ file: made }).draft)).toEqual(made);
     expect(createdFile(newSymbol().draft)).toBeUndefined();
     expect(createdFile(draft())).toBeUndefined();
+  });
+});
+
+/** Local storage in memory, which a later load reads as this one left it. */
+function memoryStorage(): VaultStorage {
+  const values = new Map<string, string>();
+  return {
+    loadLocalStorage: (key): unknown => {
+      const value = values.get(key);
+      return value === undefined ? null : (JSON.parse(value) as unknown);
+    },
+    saveLocalStorage: (key, data) => {
+      if (data === null || data === undefined) values.delete(key);
+      else values.set(key, JSON.stringify(data));
+    },
+  };
+}
+
+describe("recoveredTarget", () => {
+  const gate: DraftTarget = { kind: "file", path: "Runes/gate.ink.png" };
+  const note: DraftTarget = { kind: "new", note: "Notes/Old.md" };
+  const tower = "Runes/tower.ink.png";
+  /** What a first save claims as it is about to make tower.ink.png. */
+  const claimed = { path: tower, fingerprint: "ab" };
+  /** And once a write cut short left a part there that stays. */
+  const cut = { ...claimed, previous: "cd" };
+  /** Soon after the test's drafts were kept. */
+  const now = (): number => 2000;
+
+  it("is a symbol's old symbol until its first save has made a file, whatever path that save claims", () => {
+    expect(recoveredTarget(gate, undefined, undefined)).toEqual(gate);
+    expect(recoveredTarget(gate, undefined, claimed)).toEqual(gate);
+    expect(recoveredTarget(gate, undefined, cut)).toEqual(gate);
+    expect(recoveredTarget(gate, tower, claimed)).toEqual({
+      kind: "file",
+      path: tower,
+    });
+  });
+
+  it("names, for a new symbol's draft, the file its first save made or is making, with what it wrote, until it holds that file", () => {
+    expect(recoveredTarget(note, undefined, undefined)).toEqual(note);
+    expect(recoveredTarget(note, undefined, claimed)).toEqual({
+      ...note,
+      file: claimed,
+    });
+    // The file the found draft's own first save made, once claimed again.
+    expect(recoveredTarget({ ...note, file: made }, undefined, cut)).toEqual({
+      ...note,
+      file: cut,
+    });
+    expect(recoveredTarget(note, made.path, made)).toEqual({
+      kind: "file",
+      path: made.path,
+    });
+  });
+
+  it("leaves a symbol's draft, wherever its first save stops before it made a file, for no symbol at the path it claimed, and listed as the old one's", async () => {
+    // Another symbol is at tower.ink.png, as one that came there as the save
+    // looked, or since; gate.ink.png is gone.
+    const state = (at: string): Promise<FileState> =>
+      Promise.resolve(
+        at === tower
+          ? { kind: "opens", document: { strokes: [] }, name: "tower" }
+          : gone,
+      );
+    for (const claim of [undefined, claimed, cut]) {
+      const storage = memoryStorage();
+      const kept = draft({ target: recoveredTarget(gate, undefined, claim) });
+      expect(new DraftStore(storage, now).put(kept)).toBe(true);
+      // A later load, as after a crash now.
+      const later = new DraftStore(storage, now);
+      expect(later.forTarget({ kind: "file", path: tower })).toEqual([]);
+      expect(await listDrafts(later.list(), state, () => false)).toEqual([
+        { opens: "new", draft: kept, path: gate.path, unopened: gone },
+      ]);
+    }
   });
 });
 

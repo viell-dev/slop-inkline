@@ -522,12 +522,16 @@ must keep released files readable and looking the same, as
   save wrote, and saved beside it, leaving it as it is, once it changed, and
   followed when it is renamed while the draft is open; the draft opened staying
   the old symbol's, its file's base layer and fingerprints included, until the
-  first save, through Inkline's unloading before it and during it, so that
-  restoring it on that file brings the base layer back, and through a first save
-  refused because another symbol came to the name typed as it was saved; a base
-  layer the draft kept itself coming back, and one that cannot be decoded said
-  so, with the strokes, and kept until a save; an editor that overtook the draft
-  as its base layer was read saying so, and its save making a file of its own,
+  first save has made a file, through Inkline's unloading before it and during
+  it, so that restoring it on that file brings the base layer back, through a
+  first save refused because another symbol came to the name typed as it was
+  saved, or cut short, and at each point a crash could stop that save at, as a
+  later load reads it, so that no symbol that came to the name typed offers it,
+  and then kept for the file made as soon as it is made; the editor saying,
+  while that save waits for Obsidian, to recover it from the list; a base layer
+  the draft kept itself coming back, and one that cannot be decoded said so,
+  with the strokes, and kept until a save; an editor that overtook the draft as
+  its base layer was read saying so, and its save making a file of its own,
   leaving the first save's file as it was; the list and the question closing as
   Inkline unloads, and doing nothing after; a notice in place of the question
   when another window opened as the symbol was read; pictures no larger than
@@ -537,6 +541,7 @@ must keep released files readable and looking the same, as
   name field say
   ([draft-recovery.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/draft-recovery.e2e.ts),
   [recovery.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/recovery.test.ts),
+  [keeping.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/keeping.test.ts),
   and
   [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
 - A draft's base layer dropped from storage as soon as the draft that replaces

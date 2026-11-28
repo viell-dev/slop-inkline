@@ -126,7 +126,9 @@ Obsidian, which ends the wait:
 
 - **In the editor,** your strokes are safe in a draft. Open the symbol again, or
   start a new symbol in that note if it had not been saved yet, and choose
-  **Restore**.
+  **Restore**. **Unreleased:** a drawing you opened as a new symbol from a
+  draft, which had not been saved yet, comes back from **Inkline: Recover
+  drafts**, as the editor then says.
 - **In the library's fields,** what you typed stays there, and you can select
   and copy it. Copy it before you restart, as a restart does not keep it.
   **Cancel** or Esc closes the fields and stops the save. Only a save that had
