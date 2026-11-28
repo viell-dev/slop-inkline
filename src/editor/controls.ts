@@ -207,8 +207,14 @@ export class EditorControls {
     );
     // Enter on the drawing area ends a polygon or path being placed where it
     // is, and makes a path that has ended ink, as Finish path does; elsewhere
-    // it is left to what has the focus, such as a button.
-    scope.register([], "Enter", () => !line.actIf(() => editor.endShape()));
+    // it is left to what has the focus, such as a button. A held Enter that
+    // repeats does neither, so that one press cannot both end a path and make
+    // it ink.
+    scope.register(
+      [],
+      "Enter",
+      (event) => !line.actIf(() => editor.endShape(event.repeat)),
+    );
     // While moving the picture, the arrow keys move it and + and − scale
     // it; otherwise they keep what they do.
     const moving = (

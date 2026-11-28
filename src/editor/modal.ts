@@ -383,11 +383,13 @@ export class InkEditorModal extends Modal {
       cancelInk: () => {
         this.#tracing.cancelInk();
       },
-      endShape: () => {
+      endShape: (repeats) => {
         const canvas = this.#surface?.view.canvas;
         if (!this.#session.placing || activeDocument.activeElement !== canvas) {
           return false;
         }
+        // Only a fresh press ends a shape or makes a waiting path ink.
+        if (repeats) return true;
         // A path being placed waits, once it ends, to be adjusted; a second
         // Enter makes it ink, as a polygon's one does.
         if (this.#session.endPath()) this.#pathWaits();

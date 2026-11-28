@@ -141,6 +141,27 @@ function waiting(state: "ended" | "closed"): string {
   return `Path ${state}: adjust its points and handles; Enter or Finish path makes it ink`;
 }
 
+/**
+ * Enter, as a key held down repeats it, `times` times, to what has the focus:
+ * WebDriver's keys are each pressed and let go, and never repeat.
+ */
+async function repeatEnter(times: number): Promise<void> {
+  await browser.execute((times) => {
+    const target = document.activeElement ?? document.body;
+    for (let count = 0; count < times; count++) {
+      target.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          code: "Enter",
+          repeat: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }
+  }, times);
+}
+
 /** Whether Finish path is on, or "missing" if the editor has no such button. */
 async function finishOn(): Promise<boolean | "missing"> {
   return browser.execute(() => {
@@ -437,9 +458,14 @@ describe("Path", function () {
     // now comes in from below, bowed down from the line.
     await drag([0.5, 0.5], [0.5, 0.85]);
     await saveScreenshot("path-handle-moved", browser.$(".inkline-editor"));
-    // Enter ends it, and Enter again makes it ink.
+    // Enter ends it, and Enter again makes it ink. Enter held down, which
+    // repeats, ends it once and leaves it waiting: only a fresh press makes it
+    // ink. While it waits, the draft holds nothing of it yet.
     await browser.keys("Enter");
     await waitForStatus(waiting("ended"));
+    await repeatEnter(3);
+    await browser.pause(200);
+    expect(await finishOn()).toBe(true);
     expect(await draftNow()).toBe(0);
     await browser.keys("Enter");
     const [bowed] = await draftStrokes(1);

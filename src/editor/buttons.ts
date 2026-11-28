@@ -68,11 +68,12 @@ export interface EditorCommands {
   cancelInk(): void;
   /**
    * Ends a polygon or a path being placed where it is, or makes a path that
-   * has ended ink, as Finish path does, for Enter on the drawing area.
-   * Returns false, doing nothing, while none is being placed or the focus is
+   * has ended ink, as Finish path does, for Enter on the drawing area; for an
+   * Enter that `repeats` as it is held, takes it and does nothing. Returns
+   * false, doing nothing, while none is being placed or the focus is
    * elsewhere, as on a button that Enter presses.
    */
-  endShape(): boolean;
+  endShape(repeats: boolean): boolean;
   /**
    * What `name`, an arrow key or + or −, does while no picture is moving, with
    * Shift held or not. Returns whether it did anything.
