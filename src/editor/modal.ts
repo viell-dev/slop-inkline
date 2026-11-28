@@ -628,6 +628,9 @@ export class InkEditorModal extends Modal {
   onEscapeKey(event: KeyboardEvent): void {
     if (event.defaultPrevented) return;
     event.preventDefault();
+    // Only a fresh press: a held Esc repeats, and would close the editor, or
+    // ask to, right after dropping a shape that Undo could bring back.
+    if (event.repeat) return;
     if (this.#closing || !this.#session.placing) {
       this.close();
       return;
