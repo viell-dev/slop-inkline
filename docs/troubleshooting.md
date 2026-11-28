@@ -60,11 +60,12 @@ another window opened while the symbol was read, so that the question does not
 take the keys from it, and then says to run **Inkline: Recover drafts**, which
 lists the draft.
 
-**"No draft is waiting for a symbol that is gone or does not open …"**
-**Unreleased:** **Inkline: Recover drafts** found nothing to list. A symbol that
-opens offers its own drafts when you open it, one renamed while Inkline was off
-offers its draft once you rename it back, and a new symbol started in a note
-that is still there offers its draft when you start a new symbol in that note.
+**"There are no unsaved drawings to recover."** **Unreleased:** **Inkline:
+Recover drafts** found no draft to list. It leaves out a draft that an open
+editor has, one that would bring back nothing its symbol's file lacks, and one
+that a newer version of Inkline kept, which this one cannot read, as
+[Recover drafts](./recovery.md#recover-drafts) says. A draft is kept for 30
+days.
 
 **"The unsaved drawing was not opened, as the editor was in use while it was
 read. …"** **Unreleased:** a draft opened as a new symbol keeps a picture to

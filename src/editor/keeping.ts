@@ -140,6 +140,11 @@ export interface KeepingOptions {
      * draft is offered then.
      */
     readonly recover?: Draft;
+    /**
+     * The id of a draft for the symbol to offer before any other, as one
+     * chosen from the list of drafts, rather than the newest.
+     */
+    readonly first?: string;
   };
 }
 
@@ -733,11 +738,11 @@ export class Keeping {
   }
 
   /**
-   * Offers back the newest draft another editor left for this symbol, once
-   * any base layer it keeps is decoded, holding it meanwhile so that no other
-   * editor offers it too. Dismissing the question keeps the draft for next
-   * time; only Restore or Discard use it up, and Restore only once this
-   * editor's own draft has taken its place.
+   * Offers back the newest draft another editor left for this symbol, or the
+   * one `drafts.first` names, once any base layer it keeps is decoded, holding
+   * it meanwhile so that no other editor offers it too. Dismissing the
+   * question keeps the draft for next time; only Restore or Discard use it up,
+   * and Restore only once this editor's own draft has taken its place.
    */
   async offerDraft(): Promise<void> {
     const drafts = this.#options.drafts;
@@ -755,6 +760,7 @@ export class Keeping {
       offers.drafts,
       this.#opened,
       this.#savedName,
+      drafts.first,
     );
     for (const id of drop) drafts.store.remove(id);
     const found = recover ?? offer;

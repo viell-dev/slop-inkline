@@ -1627,6 +1627,28 @@ describe("draftOffer", () => {
       drop: [],
     });
   });
+
+  it("looks at the draft chosen first, then at the others, newest first", () => {
+    const offered = [something("a"), nothing("b"), something("c")];
+    expect(draftOffer(file, offered, opened, "001", "c")).toEqual({
+      offer: something("c"),
+      drop: [],
+    });
+    // One that brings nothing back is dropped as any other is.
+    expect(draftOffer(file, offered, opened, "001", "b")).toEqual({
+      offer: something("a"),
+      drop: ["b"],
+    });
+    // One that is not kept for the symbol changes nothing.
+    expect(draftOffer(file, offered, opened, "001", "z")).toEqual({
+      offer: something("a"),
+      drop: [],
+    });
+    const target: DraftTarget = { kind: "new", note: "Note.md" };
+    expect(
+      draftOffer(target, [nothing("a"), something("b")], opened, "", "b").offer,
+    ).toEqual(something("b"));
+  });
 });
 
 describe("unshownBase", () => {

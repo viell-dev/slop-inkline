@@ -312,8 +312,8 @@ export default class InklinePlugin extends Plugin {
         return true;
       },
     });
-    // Drafts that no editor can offer, as their symbol's file is gone or does
-    // not open, or a new symbol's note is gone.
+    // Every draft that no open editor holds, to get back by opening its symbol
+    // or as a new symbol.
     this.addCommand({
       id: "recover-drafts",
       name: "Recover drafts",

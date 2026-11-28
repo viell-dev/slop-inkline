@@ -9,6 +9,20 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Changed
+
+- **Inkline: Recover drafts** now lists every unsaved drawing kept as a draft,
+  other than one an open editor has, where it listed only those whose symbol's
+  file was gone or did not open, or whose new symbol's note was gone. Each row
+  says what choosing it does. Choosing a symbol whose file opens opens it, which
+  asks to restore that draft, even when the symbol has another. A new symbol's
+  draft whose note is still there opens as a new symbol inserted in no note, as
+  the draft does not record where in the note it was to go, and the question
+  says to insert it with **Inkline: Insert existing symbol** once it is saved.
+  With nothing to list, the list says so and stays open, in place of a long
+  notice that went before it could be read. Drafts are kept as before
+  ([#473](https://github.com/viell-dev/slop-inkline/issues/473)).
+
 ### Fixed
 
 - A draft opened as a new symbol, from **Inkline: Recover drafts** or a symbol

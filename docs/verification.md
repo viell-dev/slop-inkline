@@ -472,24 +472,30 @@ must keep released files readable and looking the same, as
   was deleted listed by **Inkline: Recover drafts**, with a picture of it, and
   saved at that file's path, which the notes embedding it show again; Not now
   keeping a draft, and Discard dropping it; the draft of an open editor, and a
-  draft of a later layout, not listed, and the later one left as it is; a new
-  symbol's draft whose note was deleted listed and saved where new symbols go,
-  inserted nowhere; one whose first save made a file written over that file
-  while it holds what that save wrote, and saved beside it, leaving it as it is,
-  once it changed, and followed when it is renamed while the draft is open; the
-  draft opened staying the old symbol's, its file's base layer and fingerprints
-  included, until the first save, through Inkline's unloading before it and
-  during it, so that restoring it on that file brings the base layer back, and
-  through a first save refused because another symbol came to the name typed as
-  it was saved; a base layer the draft kept itself coming back, and one that
-  cannot be decoded said so, with the strokes, and kept until a save; an editor
-  that overtook the draft as its base layer was read saying so, and its save
-  making a file of its own, leaving the first save's file as it was; the list
-  and the question closing as Inkline unloads, and doing nothing after; a notice
-  in place of the question when another window opened as the symbol was read;
-  pictures no larger than their rows need; and which drafts are listed, the name
-  a new symbol starts with, and what the list, the question, and the name field
-  say
+  draft of a later layout, not listed, and the later one left as it is; a
+  symbol's drafts whose file opens listed, and the one chosen of two offered as
+  its symbol opens, the other kept; one whose file goes while the list is open
+  asked about as a new symbol; one whose file a newer Inkline saved listed and
+  kept; a new symbol's draft whose note was deleted, and one whose note is
+  there, listed and saved where new symbols go, inserted nowhere, the note left
+  as it was; the list saying, and staying open, when it has nothing to list; one
+  whose first save made a file written over that file while it holds what that
+  save wrote, and saved beside it, leaving it as it is, once it changed, and
+  followed when it is renamed while the draft is open; the draft opened staying
+  the old symbol's, its file's base layer and fingerprints included, until the
+  first save, through Inkline's unloading before it and during it, so that
+  restoring it on that file brings the base layer back, and through a first save
+  refused because another symbol came to the name typed as it was saved; a base
+  layer the draft kept itself coming back, and one that cannot be decoded said
+  so, with the strokes, and kept until a save; an editor that overtook the draft
+  as its base layer was read saying so, and its save making a file of its own,
+  leaving the first save's file as it was; the list and the question closing as
+  Inkline unloads, and doing nothing after; a notice in place of the question
+  when another window opened as the symbol was read; pictures no larger than
+  their rows need; and which drafts are listed, a symbol's draft that would
+  bring back nothing its file lacks left out, the draft chosen offered first,
+  the name a new symbol starts with, and what the list, the question, and the
+  name field say
   ([draft-recovery.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/draft-recovery.e2e.ts),
   [recovery.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/recovery.test.ts),
   and
