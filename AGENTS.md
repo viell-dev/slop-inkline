@@ -252,8 +252,9 @@ owner's other agent-maintained projects.
   the two. Assign the person being asked under either label, including the owner
   when asking them to test. The issue says exactly what is needed, why human
   input is required, the recommendation, what result to expect, and which work
-  waits for it; a test request names the build, gives synthetic inputs, numbered
-  steps with their expected results, and what to report.
+  waits for it; a test request names the build and how to install it, explains
+  what changed and how to use it, and lists every question in a section of its
+  own at the end, as [RELEASING.md](RELEASING.md#human-release-testing) says.
 - Agents own functional verification. A person must also try the first stable
   release and substantial interface or workflow changes before stable
   publication, as [RELEASING.md](RELEASING.md#human-release-testing) describes.

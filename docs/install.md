@@ -59,6 +59,10 @@ below.
    The `.obsidian` directory is hidden on some systems. If your vault uses a
    different configuration directory, use its `plugins/` directory instead.
 
+   If the vault has an `inkline/` folder already, follow [Update](#update)
+   instead: that folder also holds `data.json`, your Inkline settings, and
+   replacing the whole folder loses them.
+
 3. In Obsidian, open **Settings → Community plugins**, turn community plugins on
    if needed, and enable **Inkline**. Restart Obsidian if it is not listed.
 
@@ -81,6 +85,8 @@ Download `main.js`, `manifest.json`, and `styles.css` from the same GitHub
 release. Create `.obsidian/plugins/inkline/` in your vault and put all three
 files inside it, then enable **Inkline** under **Settings → Community plugins**.
 A vault with a different configuration directory has its plugins there instead.
+If the folder is there already, replace only those three files, and keep
+`data.json`, which holds your settings.
 
 ## Build and install a development build
 
@@ -111,10 +117,20 @@ too:
    plugins**.
 2. Download the newer release's install ZIP and extract it into the same
    `.obsidian/plugins/` directory. Replace the three plugin files in `inkline/`;
-   keep `data.json`, which stores your preferences. If your tool extracts
-   elsewhere, copy only the three plugin files into the existing `inkline/`
-   directory rather than replacing the directory. For a loose-file installation,
-   replace only those same three files.
+   keep `data.json`, which holds your settings. If your tool extracts elsewhere,
+   copy only the three plugin files into the existing `inkline/` directory
+   rather than replacing the directory. For a loose-file installation, replace
+   only those same three files.
+
+   ::: warning Keep data.json
+
+   Inkline keeps its settings in `data.json`, in the same `inkline/` folder as
+   the plugin's files. Deleting or replacing that folder, rather than the three
+   files in it, puts every setting back to its default. Your symbols and notes
+   are not in it, and stay as they are.
+
+   :::
+
 3. Turn Inkline on again, or restart Obsidian.
 
 Your drawings remain ordinary PNG attachments in the vault.

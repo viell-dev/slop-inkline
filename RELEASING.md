@@ -372,11 +372,15 @@ silence, downloads, and a partial test are not blanket acceptance.
 1. Prepare a brief practical test of the main user journey, including
    installation, discoverability, ordinary tasks, feedback, and recovery.
    Complete agent verification first. Supply a directly downloadable installable
-   build, installation instructions, synthetic inputs, numbered tasks and
-   expected outcomes. Ask what felt unclear or awkward as well as what failed,
-   and request the build, environment, tested tasks, and remaining untested
-   areas. Do not ask a person to build from source or reconstruct a development
-   thread.
+   build and installation instructions, including how to update an installation
+   by hand without losing `data.json`, and how to go back. Write the request in
+   two parts: first what changed and how to use it, with no questions among it;
+   then, in a section of its own at the end, every question, including what felt
+   unclear or awkward as well as what failed, and the build, environment, what
+   was tried, and what was not. Keep it generic: the person tests in their own
+   vault, so do not script steps an agent can perform, list expected results to
+   compare, or provide a synthetic vault or inputs to follow. Do not ask a
+   person to build from source or reconstruct a development thread.
 2. Create or reuse a dedicated issue before requesting the test. Use
    `Type: Maintenance` and `Needs: Human`, or `Needs: Owner` when only the owner
    can supply the answer; never both Needs labels. Assign the person being
@@ -412,10 +416,10 @@ Agents continue to own implementation, verification, review, packaging,
 publication, and follow-up. This gate requires a proportionate human usability
 pass, not human code review or repeated approval for every routine release.
 
-For Inkline, use a synthetic vault to draw and insert a symbol, edit it, rename
-it, find its uses, and check the result in light and dark themes. Include
-whether the drawing controls, guides, save/close behavior, and recovery make
-sense.
+For Inkline, the main journey is drawing and inserting a symbol, editing it,
+renaming it, finding its uses, and reading it in light and dark themes. The
+questions ask whether the drawing controls, guides, saving and closing, and
+recovery make sense, as well as about what the release changes.
 
 ## Prepare the release pull request
 
