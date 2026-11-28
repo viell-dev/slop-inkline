@@ -6,6 +6,7 @@ import {
   listDrafts,
   listedDetail,
   listedName,
+  listedSearchTexts,
   listedPlace,
   recoveredName,
   recoveryQuestion,
@@ -280,6 +281,24 @@ describe("what the list says", () => {
     expect(listedPlace(newSymbol({}, {}, true))).toBe(
       "Started in Notes/Old.md",
     );
+  });
+
+  it("is found by the name it shows, as well as by its paths", () => {
+    // A new symbol named in its editor and never saved: only its name says
+    // what it is, as its note's path says nothing of it.
+    expect(listedSearchTexts(newSymbol({}, { name: "Alpha" }))).toEqual([
+      "Alpha",
+      "Notes/Old.md",
+    ]);
+    expect(listedSearchTexts(newSymbol({ file: made }))).toEqual([
+      "007",
+      "Notes/Old.md",
+      made.path,
+    ]);
+    expect(listedSearchTexts(onSymbol("Runes/tower.ink.png"))).toEqual([
+      "tower",
+      "Runes/tower.ink.png",
+    ]);
   });
 
   it("says what became of each draft's symbol, and what choosing it does", () => {

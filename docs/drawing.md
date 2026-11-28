@@ -295,22 +295,23 @@ ink** is open they do nothing to the drawing.
 **Zoom** (Z) shows the drawing twice as large, in a taller drawing area, for
 fine detail; it grows no taller than a little over half the window, or than
 leaves the editor's controls in view, and shows more width instead. The wheel,
-or the left and right arrow keys, move along the drawing, and **Fit** centres it
-while staying zoomed. **Next** keeps the zoom for the following symbol. Zooming
-changes only the view: the symbol is the same size in notes, and the brushes
-stay the same size against it. **Unreleased:** pressed while you draw a stroke,
-a shape, a polygon's corner, or a path's point or handle, Zoom waits until you
-let go, so that what you draw ends where it shows; pressed twice meanwhile, it
-leaves the view as it is. Fit pressed while you draw waits the same way. Moving
-along with the wheel or the left and right arrow keys while you draw takes what
-you draw with it, on to where the pointer is in the drawing as the view moves,
-so a long stroke can go on past the edge of the view. If the window or the
-editor changes size while you draw a stroke or a shape, or Obsidian's page zoom
-changes (Ctrl+= and Ctrl+−), and that moves the drawing under the pointer, the
-stroke or shape ends where it showed, and the rest of the drag draws nothing; a
-polygon's corner or a path's point or handle being pressed then goes where you
-let go, as ever. **Unreleased:** opening or closing **Readings and
-translations** while you draw counts as a change to the editor's size.
+or the left and right arrow keys, move along the drawing, unless **Move** is on,
+when they scale and move the picture, and **Fit** centres it while staying
+zoomed. **Next** keeps the zoom for the following symbol. Zooming changes only
+the view: the symbol is the same size in notes, and the brushes stay the same
+size against it. **Unreleased:** pressed while you draw a stroke, a shape, a
+polygon's corner, or a path's point or handle, Zoom waits until you let go, so
+that what you draw ends where it shows; pressed twice meanwhile, it leaves the
+view as it is. Fit pressed while you draw waits the same way. Moving along with
+the wheel or the left and right arrow keys while you draw takes what you draw
+with it, on to where the pointer is in the drawing as the view moves, so a long
+stroke can go on past the edge of the view. If the window or the editor changes
+size while you draw a stroke or a shape, or Obsidian's page zoom changes (Ctrl+=
+and Ctrl+−), and that moves the drawing under the pointer, the stroke or shape
+ends where it showed, and the rest of the drag draws nothing; a polygon's corner
+or a path's point or handle being pressed then goes where you let go, as ever.
+**Unreleased:** opening or closing **Readings and translations** while you draw
+counts as a change to the editor's size.
 
 **Unreleased:** while zoomed, a scroll bar below the drawing area shows where
 the view is whenever the drawing reaches past it, or the view has moved off the
