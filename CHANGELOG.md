@@ -11,6 +11,18 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Changed
 
+- Obsidian's image viewer, which shows a picture at its full size, no longer
+  opens on a symbol, which is made to be read at the size of the text around it:
+  not on a click in Reading view, embedded notes, hover previews, and a focused
+  canvas card, nor in Live Preview on a click on a symbol already selected, or
+  on Space. So a double-click now opens a symbol in the editor in all those
+  places, where the viewer took its second click, and a selected symbol in Live
+  Preview no longer opens and closes the viewer instead. A callout in Live
+  Preview still shows its text on a click, so right-click a symbol there for
+  **Edit symbol**. Every other picture keeps the viewer, and so do symbols once
+  Inkline is off. The viewer opened on another picture still goes through the
+  note's symbols with the arrow keys, as Inkline cannot leave them out of its
+  list ([#474](https://github.com/viell-dev/slop-inkline/issues/474)).
 - **Inkline: Recover drafts** now lists every unsaved drawing kept as a draft,
   other than one an open editor has, where it listed only those whose symbol's
   file was gone or did not open, or whose new symbol's note was gone. Each row
