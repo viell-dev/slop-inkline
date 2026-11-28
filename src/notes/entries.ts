@@ -1,6 +1,8 @@
 // Where a symbol in a note can be opened for editing from: the embed at the
 // cursor, for a command, and a symbol's image, for a right-click or a
-// double-click, wherever it is. editSymbol in symbols.ts opens it.
+// double-click, wherever it is. editSymbol in symbols.ts opens it. Also the
+// clicks and keys that would open Obsidian's image viewer on a symbol, which
+// Inkline keeps shut: a symbol is read at the size of the text around it.
 
 import {
   Component,
@@ -155,9 +157,8 @@ function plainClick(event: MouseEvent): boolean {
  * The symbol that a double-click, or a click after the first of one, lands
  * on in a note, if any: its image in an editor or a rendered note, or one
  * under the sheet a canvas keeps over a card that is not focused. A click
- * that Obsidian answers by covering the symbol or redrawing it, as Reading
- * view's image viewer and a Live Preview callout shown as text do, leaves
- * the next click nothing to land on.
+ * that Obsidian answers by redrawing the symbol, as a Live Preview callout
+ * shown as text does, leaves the next click nothing to land on.
  */
 export function symbolDoubleClicked(
   event: MouseEvent,
@@ -166,6 +167,72 @@ export function symbolDoubleClicked(
   const image = asSymbol(event.targetNode);
   if (image === undefined) return symbolUnderCardSheet(event);
   return noteAround(image) === null ? undefined : image;
+}
+
+/**
+ * The embed of the picture an editor in Live Preview has selected, as a click
+ * on it leaves it: Obsidian marks it so, and takes the mark off as the
+ * selection moves, in every version tested.
+ */
+const selectedEmbed = ".image-embed.is-selected";
+
+/** Whether `image`, in an editor, is the picture Live Preview has selected. */
+function selectedInEditor(image: HTMLImageElement): boolean {
+  const embed = image.parentElement?.closest(".image-embed");
+  return embed?.matches(selectedEmbed) === true;
+}
+
+/**
+ * The symbol that `event`, a click, would open Obsidian's image viewer on, if
+ * any, whatever keys it has: in a rendered note, as in Reading view, an
+ * embedded note, a hover preview, or a focused canvas card, a click on any
+ * picture opens it; in an editor, a click on the picture Live Preview has
+ * selected does, while a click on any other selects it. Obsidian opens the
+ * viewer only for a click whose default is not prevented by then, and nothing
+ * else it does with such a click waits on that, as selecting text with Shift
+ * or following a link the picture is in.
+ */
+export function symbolViewerClicked(
+  event: MouseEvent,
+): HTMLImageElement | undefined {
+  const image = asSymbol(event.targetNode);
+  if (image === undefined) return undefined;
+  const note = noteAround(image);
+  if (note === null) return undefined;
+  return note.hasClass("markdown-preview-view") || selectedInEditor(image)
+    ? image
+    : undefined;
+}
+
+/**
+ * The symbol that `event`, a key, would open Obsidian's image viewer on, if
+ * any: Space alone, in an editor whose selected picture is a symbol. The
+ * editor is the one the key goes to, whose text is its target: a table's
+ * cells in Live Preview have editors of their own, inside the note's.
+ */
+export function symbolViewerKey(
+  event: KeyboardEvent,
+): HTMLImageElement | undefined {
+  if (
+    event.key !== " " ||
+    event.isComposing ||
+    event.shiftKey ||
+    event.ctrlKey ||
+    event.altKey ||
+    event.metaKey
+  ) {
+    return undefined;
+  }
+  const text = event.targetNode;
+  if (text?.instanceOf(HTMLElement) !== true || !text.hasClass("cm-content")) {
+    return undefined;
+  }
+  for (const embed of text.findAll(selectedEmbed)) {
+    if (embed.closest(".cm-content") !== text) continue;
+    const image = asSymbol(embed.querySelector("img"));
+    if (image !== undefined) return image;
+  }
+  return undefined;
 }
 
 /** The leaf whose view holds `element`, if any, as a hover preview has none. */

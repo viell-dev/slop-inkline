@@ -64,7 +64,14 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   first click opens Obsidian's image viewer, and in a callout in Live Preview it
   shows the callout as text
   ([#264](https://github.com/viell-dev/slop-inkline/issues/264)). Right-click
-  the symbol there for **Edit symbol**.
+  the symbol there for **Edit symbol**. **Unreleased:** the image viewer no
+  longer opens on a symbol, so a double-click opens one in all those places but
+  a callout in Live Preview, which still shows its text on a click
+  ([#474](https://github.com/viell-dev/slop-inkline/issues/474)).
+- **Unreleased: Obsidian's image viewer, opened on another picture, shows
+  symbols too.** It goes through every picture in the note with the arrow keys,
+  symbols among them, at their full size, and Inkline cannot leave them out of
+  that list. Press Escape to close it.
 - **A line whose first letter is in a symbol's name** runs in that name's
   direction in Live Preview. `8 ![[مرحبا.ink.png]]` runs right to left there,
   and left to right in Reading view. Live Preview takes a line's direction from

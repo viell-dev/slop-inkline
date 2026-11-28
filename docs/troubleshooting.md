@@ -20,7 +20,8 @@ it, as [Edit a symbol](./notes.md#edit-a-symbol) lists.
 embedded notes, hover previews, and a focused canvas card, a click on any
 picture opens the viewer before a second click can make a double-click.
 Right-click the symbol and choose **Edit symbol**, or double-click it in Live
-Preview.
+Preview. **Unreleased:** the viewer no longer opens on a symbol, and a
+double-click opens it in all those places.
 
 **Typing the insert trigger lists nothing.** The list does not open in code or
 front matter, nor when a space follows the trigger straight away. Code is where
