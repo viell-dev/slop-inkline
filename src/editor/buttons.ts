@@ -346,7 +346,7 @@ export const controls: readonly Control[] = [
     row: "view",
     text: "Zoom",
     description:
-      "a taller view of the drawing, twice as large, with twice as many grid cells each way; the wheel, the left and right arrow keys, or its scroll bar move along it",
+      "a taller view of the drawing, twice as large, with twice as many grid cells each way; its scroll bar moves along it, and so do the wheel and the left and right arrow keys while Move is off",
     keys: [chord("z")],
     run: (editor) => {
       editor.toggleZoom();
@@ -640,7 +640,7 @@ export const quickStart = {
     "Flat ends (T), with the grid on, stops an end of a freehand stroke or a path that Shift put on a row flush with that row, rather than rounding past it, if it comes in at 45° or steeper; one running along the row stays round. It is off until you turn it on, and ellipses and polygons are never cut.",
     "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
     "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell's width with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
-    "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the left and right arrow keys move along it, and so does the scroll bar below it, which shows where the view is while the drawing reaches past it. Fit (F) centres the drawing. Pressed while you draw, Zoom and Fit wait until you let go, so that what you draw ends where it shows, and moving along carries what you draw with the view. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
+    "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the scroll bar below it, which shows where the view is while the drawing reaches past it, moves along it, and so do the wheel and the left and right arrow keys while Move is off: with Move on, they move and scale the picture. Fit (F) centres the drawing. Pressed while you draw, Zoom and Fit wait until you let go, so that what you draw ends where it shows, and moving along carries what you draw with the view. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
     "Paste, drop, or choose (Choose picture…) a picture to trace. It comes at its own size, scaled down only to fit the drawing area, and a symbol's own image lies over the strokes it shows. Move (M) positions it; the wheel, or + and −, scale it about its middle in small steps. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
     "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
     "Readings and translations, beside the name, say how the symbol is read and what it means, apart from its name: one per line, the main one first. Saving keeps them with the symbol, and the lists find a symbol by them. The library changes them without opening the editor.",

@@ -43,6 +43,7 @@ import {
   listDrafts,
   listedDetail,
   listedName,
+  listedSearchTexts,
   listedPlace,
   recoveredName,
   recoveryQuestion,
@@ -1346,9 +1347,7 @@ class DraftList extends SuggestModal<DraftRow> {
   override getSuggestions(query: string): DraftRow[] {
     const search = prepareSimpleSearch(query);
     return this.#rows.filter(({ listed }) =>
-      [listed.path, createdFile(listed.draft)?.path].some(
-        (path) => path !== undefined && search(path) !== null,
-      ),
+      listedSearchTexts(listed).some((text) => search(text) !== null),
     );
   }
 
