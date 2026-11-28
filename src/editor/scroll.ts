@@ -175,7 +175,11 @@ export class EditorScrollBar {
       },
     });
     this.#thumb = this.#bar.createDiv({ cls: "inkline-scroll-thumb" });
-    this.#resize = new ResizeObserver((entries) => {
+    // The bar's own window's observer: one of the main window's reports only
+    // as the main window draws, so the thumb of an editor in a popout stayed
+    // without a width (#498).
+    const view = this.#bar.doc.defaultView ?? window;
+    this.#resize = new view.ResizeObserver((entries) => {
       this.#track = entries.at(-1)?.borderBoxSize[0]?.inlineSize ?? 0;
       this.update();
     });
