@@ -25,9 +25,12 @@ If Inkline does not show there yet, install the ZIP from the latest release:
    release marked **Latest** on
    [GitHub releases](https://github.com/viell-dev/slop-inkline/releases): the
    newest public release, such as 1.0.0.
-2. Extract it into your vault's `.obsidian/plugins/` directory. The ZIP holds
-   its own `inkline/` folder, so the plugin's three files end up in
-   `.obsidian/plugins/inkline/`.
+2. If the vault has Inkline already, update it as the installation guide's
+   [Update](https://viell-dev.github.io/slop-inkline/install#update) says
+   instead: its folder also holds `data.json`, your settings, which replacing
+   the folder loses. Otherwise, extract the ZIP into your vault's
+   `.obsidian/plugins/` directory. The ZIP holds its own `inkline/` folder, so
+   the plugin's three files end up in `.obsidian/plugins/inkline/`.
 3. In Obsidian, open **Settings → Community plugins**, turn community plugins on
    if needed, and enable **Inkline**.
 

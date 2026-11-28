@@ -651,10 +651,16 @@ must keep released files readable and looking the same, as
   Obsidian's image viewer, in Live Preview, a table in it, a popout window, a
   canvas card that is not focused, instead of the card's text, a note on a
   canvas, and a text card's own editor. The first click still puts the cursor at
-  the embed, and a click on the selected symbol later does what it does on a
-  picture. A double-click on a picture, on words, beside a symbol on a card, in
-  Reading view, an embedded note, a hover preview, a focused card, or a callout
-  in Live Preview opens no editor, and once Inkline is off nothing answers one
+  the embed. A double-click on a picture, on words, beside a symbol on a card,
+  or in a callout in Live Preview opens no editor, and once Inkline is off
+  nothing answers one, and a symbol opens the image viewer as any picture does.
+  **Unreleased:** a double-click also opens a symbol already selected in Live
+  Preview, and one in Reading view, an embedded note, a hover preview, and a
+  focused card, instead of the card's text. The viewer opens on none: not on a
+  click there, with Shift or Ctrl held too, nor on a click on the selected
+  symbol in Live Preview or on Space, which leave it selected, while a click and
+  Space open it on a photo. Enter still shows the selected symbol's link, and a
+  click with Shift or Ctrl in Live Preview leaves the selection as on a photo
   ([double-click.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/double-click.e2e.ts)).
 - The library lists symbols and their referring notes, filters by name and
   folder, follows file and link changes, and inserts successive symbols without
