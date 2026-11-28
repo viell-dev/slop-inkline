@@ -1,7 +1,15 @@
 import { browser, expect } from "@wdio/globals";
+import { wheelFactor } from "../../../src/editor/reference.ts";
 import { loadModules } from "../support/browser.ts";
-import { openAtMarker, startOver, waitForEditor } from "../support/editor.ts";
+import {
+  openAtMarker,
+  startOver,
+  surface,
+  waitForEditor,
+  waitForStatus,
+} from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { surfaceLayout } from "../support/tracing.ts";
 
 describe("Enlarged picture conversion", function () {
   before(async function () {
@@ -14,7 +22,7 @@ describe("Enlarged picture conversion", function () {
     await waitForEditor();
   });
 
-  // An H as tall as the picture, fitted to a capital's height: about 92
+  // An H as tall as the picture, scaled up to a capital's height: about 92
   // document pixels, so these enlarge it about 11.5, 5.75, 2.3 and 1.2 times.
   for (const side of [8, 16, 40, 75]) {
     it(`keeps a ${String(side)}-pixel H's enlarged edges narrow through Apply, save and reopen`, async function () {
@@ -30,6 +38,27 @@ describe("Enlarged picture conversion", function () {
     });
   }
 });
+
+/**
+ * Scales the picture just dropped, `side` pixels tall, up to a capital's
+ * height about its middle, with the wheel, as a person enlarges a small
+ * screenshot: a picture comes at its own size, centred on a capital's
+ * middle, so that this puts it from the cap height to the baseline.
+ */
+async function enlargeToCapital(side: number): Promise<void> {
+  await waitForStatus("Tracing over the picture");
+  const { capTop } = await surfaceLayout();
+  // A turn of this many pixels scales the picture by as much.
+  const deltaY = Math.round(
+    Math.log((144 - capTop) / side) / Math.log(wheelFactor(-1)),
+  );
+  await browser.keys(["m"]);
+  await browser
+    .action("wheel")
+    .scroll({ origin: surface(), x: 0, y: 0, deltaX: 0, deltaY: -deltaY })
+    .perform();
+  await browser.keys(["m"]);
+}
 
 /** The lengths of the runs of partly covered pixels in `row`. */
 function partialRuns(row: readonly number[]): number[] {
@@ -138,6 +167,7 @@ async function checkDimClarity(side: number): Promise<void> {
       }),
     );
   }, side);
+  await enlargeToCapital(side);
   await browser.$('[data-inkline-button="ink"]').waitForEnabled();
   await browser.$('[data-inkline-button="ink"]').click();
   await browser.$('[data-inkline-button="apply"]').waitForEnabled();
@@ -242,6 +272,7 @@ async function checkClarity(side: number): Promise<void> {
       new File([picture], "small-h.png", { type: "image/png" }),
     );
   }, side);
+  await enlargeToCapital(side);
   await browser.$('[data-inkline-button="ink"]').waitForEnabled();
   await browser.$('[data-inkline-button="ink"]').click();
   await browser.$('[data-inkline-button="apply"]').waitForEnabled();

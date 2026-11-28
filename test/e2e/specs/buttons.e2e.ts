@@ -44,8 +44,10 @@ const usual: Readonly<Record<string, string>> = {
     "Ellipse: drag across a box to draw an ellipse with the pen or the eraser; hold Shift for a circle, or with the grid on to snap to it (O)",
   polygon:
     "Polygon: click each corner of a shape with straight sides; click the first corner again to close it, or the last to end it; hold Shift to snap a corner to the grid (Y)",
-  path: "Path: place a curve by its points: click for a corner, or drag for a smooth point and its handles; drag a point or a handle's end to move it; click the first point to close the path, or the last to end it; hold Shift to snap to the grid (A)",
+  path: "Path: place a curve by its points: click for a corner, or drag for a smooth point and its handles; drag a point or a handle's end to move it; click the first point to close the path, or the last to end it, and Finish path makes it ink; hold Shift to snap to the grid (A)",
   fill: "Toggle fill: while on, Ellipse, and Polygon or Path closed on its first point, draw solid shapes, with the pen or the eraser; it doesn't fill what is already drawn (B)",
+  finish:
+    "Finish path: make the path ink as it is, ended or still being placed; Enter first ends a path being placed, for adjusting (Enter)",
   "size-0": "Brush size S (1)",
   "size-1": "Brush size M (2)",
   "size-2": "Brush size L (3)",
@@ -68,7 +70,7 @@ const usual: Readonly<Record<string, string>> = {
   next: "Next: save and draw the next one (Mod+Shift+Enter)",
   help: "Help",
   choose: "Choose picture…: open a picture file to trace over",
-  move: "Move: drag the picture or use the arrow keys; the wheel or + and − scale it (M)",
+  move: "Move: drag the picture or use the arrow keys; the wheel or + and − scale it about its middle (M)",
   ink: "Make ink: turn the picture into the symbol's ink, by a threshold (I)",
   remove: "Remove picture",
   light: "Light ink: the ink is lighter than the ground around it",
@@ -386,6 +388,7 @@ describe("The editor", function () {
       polygon: "false on",
       path: "false on",
       fill: "false off",
+      finish: "- off",
       grid: "false on",
       "flat-ends": "false off",
       move: "false off",

@@ -3,6 +3,10 @@
 // scaling it change that, is plain arithmetic, so that unit tests can check
 // it; only decoding it needs the browser.
 
+import { recordChunkType } from "../format/ink-file.ts";
+import { PngError, readChunks } from "../format/png.ts";
+import { lineBox, type Bounds } from "../ink/geometry.ts";
+
 /** Where a picture sits in the document. */
 export interface Placement {
   /** Its left and top edges, in document pixels. */
@@ -30,20 +34,72 @@ function limited(scale: number): number {
 }
 
 /**
- * Where a picture of `width` × `height` pixels first sits: as tall as from
- * `top` to `bottom`, in document pixels, and centred on `centerX`. The
- * editor passes the font's cap height and baseline, so that the picture
- * reads as a capital letter would.
+ * Where a picture of `width` × `height` pixels first sits within `area`, in
+ * document pixels: at its own size, a document pixel to each of its pixels,
+ * or scaled down, keeping its proportions, as far as fits a larger one in
+ * the area. Its middle goes to `middle`, moved as little as keeps it inside
+ * the area. The editor passes what the surface shows across, the line box's
+ * height, and the point halfway between the font's cap height and baseline
+ * in the middle of the surface, so that a small picture sits as a capital
+ * letter would.
  */
 export function placePicture(
   width: number,
   height: number,
-  top: number,
-  bottom: number,
-  centerX: number,
+  area: Bounds,
+  middle: { readonly x: number; readonly y: number },
 ): Placement {
-  const scale = limited((bottom - top) / Math.max(1, height));
-  return { x: centerX - (width * scale) / 2, y: top, scale };
+  const scale = limited(
+    Math.min(
+      1,
+      (area.right - area.left) / Math.max(1, width),
+      (area.bottom - area.top) / Math.max(1, height),
+    ),
+  );
+  const within = (start: number, low: number, high: number): number =>
+    Math.max(low, Math.min(start, high));
+  return {
+    x: within(
+      middle.x - (width * scale) / 2,
+      area.left,
+      area.right - width * scale,
+    ),
+    y: within(
+      middle.y - (height * scale) / 2,
+      area.top,
+      area.bottom - height * scale,
+    ),
+    scale,
+  };
+}
+
+/**
+ * Where a symbol's own image, `height` pixels tall, first sits: one line of
+ * text tall, from the line box's top to its bottom, as every version of the
+ * format shows it, which for its current version is a document pixel to each
+ * of the image's, however wide it is; and from document x 0, where the image
+ * starts in its own drawing, so that it lies over the strokes it shows.
+ */
+export function placeSymbolImage(height: number): Placement {
+  return { x: 0, y: 0, scale: limited(lineBox.height / Math.max(1, height)) };
+}
+
+/**
+ * Whether `bytes` are a symbol's own image: a PNG that holds a record chunk,
+ * whatever the record in it holds, as every version of the format keeps its
+ * record there. Bytes that are no PNG, or no well-formed one, hold none.
+ */
+export function isSymbolImage(bytes: Uint8Array): boolean {
+  try {
+    // Only whether the chunk is there counts, so no CRC is worked out but the
+    // header's, which a large picture's chunks need not cost.
+    return readChunks(bytes, () => false).some(
+      (chunk) => chunk.type === recordChunkType,
+    );
+  } catch (error) {
+    if (error instanceof PngError) return false;
+    throw error;
+  }
 }
 
 /** `placement` moved by `dx` and `dy` document pixels. */
@@ -76,15 +132,43 @@ export function scalePicture(
   };
 }
 
+/**
+ * `placement` of a picture of `width` × `height` pixels scaled by `factor`
+ * about its own middle, which stays where it is, as {@link scalePicture}
+ * keeps a point.
+ */
+export function scaleAboutMiddle(
+  placement: Placement,
+  width: number,
+  height: number,
+  factor: number,
+): Placement {
+  const { x, y, scale } = placement;
+  return scalePicture(
+    placement,
+    factor,
+    x + (width * scale) / 2,
+    y + (height * scale) / 2,
+  );
+}
+
 /** The wheel's `deltaMode` values, as a `WheelEvent` reports them. */
 const linePixels = 100 / 3;
 const pagePixels = 800;
 
 /**
- * How much one turn of the wheel scales a picture: a wheel's notch, about
- * 100 pixels of `deltaY`, scales by about a fifth, up when it turns away.
- * `deltaMode` says whether `deltaY` counts pixels, lines, or pages, as a
- * `WheelEvent`'s does; a notch is three lines.
+ * How many pixels the wheel turns to scale a picture by e: a wheel's notch,
+ * about 100 pixels of `deltaY`, then scales it by about a twentieth, and
+ * about 14 notches double it, for a fine choice of size.
+ */
+const wheelPixelsPerE = 2000;
+
+/**
+ * How much one turn of the wheel scales a picture: a wheel's notch, by about
+ * a twentieth, up when it turns away. It goes by the pixels turned, so that a
+ * trackpad's many small turns scale it smoothly, and turns scale it as much
+ * as one turn of their total. `deltaMode` says whether `deltaY` counts
+ * pixels, lines, or pages, as a `WheelEvent`'s does; a notch is three lines.
  */
 export function wheelFactor(deltaY: number, deltaMode = 0): number {
   const pixels =
@@ -93,7 +177,7 @@ export function wheelFactor(deltaY: number, deltaMode = 0): number {
       : deltaMode === 2
         ? deltaY * pagePixels
         : deltaY;
-  return Math.exp(-pixels / 500);
+  return Math.exp(-pixels / wheelPixelsPerE);
 }
 
 /**

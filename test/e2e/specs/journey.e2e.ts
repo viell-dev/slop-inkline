@@ -180,9 +180,22 @@ describe("A deciphering session", function () {
     }, marks);
     await browser.keys(["Control", "v"]);
     await waitForStatus("Tracing over the picture");
+    // Wider than the drawing area, the inscription comes scaled down to fit
+    // it whole; nine notches of the wheel enlarge it about its middle until
+    // one sign fills the area, the others past its edges.
+    await browser.waitUntil(
+      async () =>
+        (await picture("red")) !== null && (await picture("blue")) !== null,
+    );
+    await browser.keys(["m"]);
+    await browser
+      .action("wheel")
+      .scroll({ origin: surface(), x: 0, y: 0, deltaX: 0, deltaY: -900 })
+      .perform();
+    await browser.keys(["m"]);
+    await browser.waitUntil(async () => (await picture("blue")) === null);
     let red = await picture("red");
     if (red === null) throw new Error("the middle glyph is not visible");
-    expect(await picture("blue")).toBeNull();
     const delta = ((red.right - red.left) / 48) * 420;
     await pan(delta);
     await browser.waitUntil(

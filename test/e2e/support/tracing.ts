@@ -97,11 +97,18 @@ export function near(
   );
 }
 
-/** Copies a 40 px square picture of one colour, and pastes it. */
-export async function pastePicture(colour: "red" | "blue"): Promise<void> {
-  await browser.execute(async (fill) => {
-    await window.inklineTest.pictures.copyPicture(40, 40, fill);
-  }, colour);
+/** Copies a square picture of one colour, `side` pixels, and pastes it. */
+export async function pastePicture(
+  colour: "red" | "blue",
+  side = 40,
+): Promise<void> {
+  await browser.execute(
+    async (fill, size) => {
+      await window.inklineTest.pictures.copyPicture(size, size, fill);
+    },
+    colour,
+    side,
+  );
   await browser.keys(["Control", "v"]);
 }
 

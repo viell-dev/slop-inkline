@@ -11,10 +11,14 @@ import {
   settledSurface,
   startOver,
   storedDrafts,
+  symbolFiles,
   waitForEditor,
   waitForStatus,
 } from "../support/editor.ts";
+import type { Box } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { near } from "../support/tracing.ts";
+import { waitOrSay } from "../support/waits.ts";
 
 /** What the file chooser holds after a choice: its value and its files. */
 interface Chooser {
@@ -58,6 +62,51 @@ async function chooseFromFileInput(
       files: input.files.length,
     };
   }, kind);
+}
+
+/**
+ * Gives the editor's file chooser the vault file at `path`, as the system's
+ * file dialog does once that file is chosen.
+ */
+async function chooseVaultFile(path: string): Promise<void> {
+  await browser.executeObsidian(async ({ app }, filePath) => {
+    const doc = activeDocument;
+    const view = doc.defaultView;
+    if (view === null) throw new Error("no window");
+    const input = doc.querySelector(
+      '.inkline-editor .inkline-picture input[type="file"]',
+    );
+    if (input?.instanceOf(HTMLInputElement) !== true) {
+      throw new Error("no file chooser");
+    }
+    const file = app.vault.getFileByPath(filePath);
+    if (file === null) throw new Error(`no ${filePath}`);
+    const bytes = await app.vault.readBinary(file);
+    const transfer = new view.DataTransfer();
+    transfer.items.add(
+      new view.File([bytes], file.name, { type: "image/png" }),
+    );
+    input.files = transfer.files;
+    input.dispatchEvent(new view.Event("change"));
+  }, path);
+}
+
+/**
+ * Where the drawing area shows anything but its guides, in its device
+ * pixels: the ink, or the picture where there is none.
+ */
+async function drawnOnSurface(): Promise<Box | undefined> {
+  const box = await browser.execute(() => {
+    const canvas = activeDocument.querySelector(
+      ".inkline-editor .inkline-surface",
+    );
+    if (canvas?.instanceOf(HTMLCanvasElement) !== true) {
+      throw new Error("no surface");
+    }
+    // WebDriver hands back undefined as null.
+    return window.inklineTest.pictures.drawnBox(canvas) ?? null;
+  });
+  return box ?? undefined;
 }
 
 /** Which of a red and a blue picture the drawing area shows. */
@@ -218,6 +267,46 @@ describe("Choose picture", function () {
     } finally {
       rmSync(folder, { recursive: true, force: true });
     }
+  });
+
+  // A symbol's image is one line at the drawing's own pixels, so chosen as
+  // the picture it lies over the strokes it was saved from, from the top of
+  // the drawing area to its bottom, rather than shrunk to a capital (#472).
+  it("lays a symbol's own image over the strokes it shows", async function () {
+    await openEditor();
+    // From near the top of the drawing area to near its bottom, as from the
+    // ascender to the descender, with a bar across, left of the middle.
+    await draw([
+      [0.3, 0.06],
+      [0.31, 0.94],
+    ]);
+    await draw([
+      [0.2, 0.5],
+      [0.4, 0.5],
+    ]);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    const [saved] = await symbolFiles();
+    if (saved === undefined) throw new Error("not saved");
+    // The save crops the image to the ink, and moves the view with it, so
+    // that the ink stays where it was.
+    const inked = await drawnOnSurface();
+    if (inked === undefined) throw new Error("no ink shown");
+    await chooseVaultFile(saved);
+    await waitForStatus("Tracing over the picture");
+    // Cleared, the drawing area shows the picture alone, where the ink was:
+    // faint, so its softest edge pixels can vanish.
+    await browser.keys(["Delete"]);
+    let shown: Box | undefined;
+    await waitOrSay(
+      async () => {
+        shown = await drawnOnSurface();
+        return near(shown, inked, 2);
+      },
+      () =>
+        `the ink was at ${JSON.stringify(inked)}, the picture at ${JSON.stringify(shown)}`,
+    );
+    await saveScreenshot("choose-picture-symbol");
   });
 
   it("gives the focus back to the drawing after a choice or a cancel", async function () {

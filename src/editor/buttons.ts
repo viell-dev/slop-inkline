@@ -34,6 +34,8 @@ export interface EditorCommands {
   toggleEllipse(): void;
   togglePolygon(): void;
   togglePath(): void;
+  /** Makes a path being placed or adjusted ink, with the points it has. */
+  finishPath(): void;
   toggleFill(): void;
   setSize(index: number): void;
   undo(): void;
@@ -65,11 +67,13 @@ export interface EditorCommands {
   /** Closes Make ink, making no ink. */
   cancelInk(): void;
   /**
-   * Ends a polygon or a path being placed where it is, for Enter on the
-   * drawing area. Returns false, doing nothing, while none is being placed or
-   * the focus is elsewhere, as on a button that Enter presses.
+   * Ends a polygon or a path being placed where it is, or makes a path that
+   * has ended ink, as Finish path does, for Enter on the drawing area; for an
+   * Enter that `repeats` as it is held, takes it and does nothing. Returns
+   * false, doing nothing, while none is being placed or the focus is
+   * elsewhere, as on a button that Enter presses.
    */
-  endShape(): boolean;
+  endShape(repeats: boolean): boolean;
   /**
    * What `name`, an arrow key or + or −, does while no picture is moving, with
    * Shift held or not. Returns whether it did anything.
@@ -128,11 +132,13 @@ export interface Control {
   /** Whether its keys work while a text field has the focus, as saving's do. */
   readonly anywhere?: true;
   /**
-   * Whether its keys are arrow keys, which the controls give one handler
-   * each, as they also move the picture while Move is on and a magnified
-   * view along the drawing; so they are not registered as this control's.
+   * Whether its keys do more than the button, so that the controls give
+   * each of them one handler of its own and do not register them as this
+   * control's: the arrow keys also move the picture while Move is on and a
+   * magnified view along the drawing, and Enter also ends a shape being
+   * placed.
    */
-  readonly arrowKeys?: true;
+  readonly keysApart?: true;
   /** What the editor needs to offer it, as only a new symbol's offers these. */
   readonly needs?: "copyFrom" | "next";
   /** Whether it is the one to press in its row, as Save and Apply are. */
@@ -191,7 +197,7 @@ export const controls: readonly Control[] = [
     row: "tools",
     text: "Path",
     description:
-      "place a curve by its points: click for a corner, or drag for a smooth point and its handles; drag a point or a handle's end to move it; click the first point to close the path, or the last to end it; hold Shift to snap to the grid",
+      "place a curve by its points: click for a corner, or drag for a smooth point and its handles; drag a point or a handle's end to move it; click the first point to close the path, or the last to end it, and Finish path makes it ink; hold Shift to snap to the grid",
     keys: [chord("a")],
     run: (editor) => {
       editor.togglePath();
@@ -206,6 +212,18 @@ export const controls: readonly Control[] = [
     keys: [chord("b")],
     run: (editor) => {
       editor.toggleFill();
+    },
+  },
+  {
+    id: "finish",
+    row: "tools",
+    text: "Finish path",
+    description:
+      "make the path ink as it is, ended or still being placed; Enter first ends a path being placed, for adjusting",
+    keys: [chord("Enter")],
+    keysApart: true,
+    run: (editor) => {
+      editor.finishPath();
     },
   },
   ...brushSizes.map((size, index): Control => ({
@@ -253,7 +271,7 @@ export const controls: readonly Control[] = [
     description:
       "move the whole drawing up a pixel, or with Shift a grid cell's width",
     keys: [chord("ArrowUp")],
-    arrowKeys: true,
+    keysApart: true,
     run: (editor, shift) => {
       editor.moveDrawing(-1, shift);
     },
@@ -265,7 +283,7 @@ export const controls: readonly Control[] = [
     description:
       "move the whole drawing down a pixel, or with Shift a grid cell's width",
     keys: [chord("ArrowDown")],
-    arrowKeys: true,
+    keysApart: true,
     run: (editor, shift) => {
       editor.moveDrawing(1, shift);
     },
@@ -382,7 +400,7 @@ export const controls: readonly Control[] = [
     row: "picture",
     text: "Move",
     description:
-      "drag the picture or use the arrow keys; the wheel or + and − scale it",
+      "drag the picture or use the arrow keys; the wheel or + and − scale it about its middle",
     keys: [chord("m")],
     run: (editor) => {
       editor.toggleMove();
@@ -451,6 +469,7 @@ export const buttonIcons: Readonly<Record<string, string>> = {
   polygon: "pentagon",
   path: "pen-tool",
   fill: "circle-dot",
+  finish: "check",
   undo: "undo-2",
   redo: "redo-2",
   clear: "trash-2",
@@ -521,8 +540,10 @@ export interface ButtonInputs {
   readonly sizeIndex: number;
   readonly canUndo: boolean;
   readonly canRedo: boolean;
-  /** Whether a polygon or a path is being placed. */
+  /** Whether a polygon or a path is being placed, or a path adjusted. */
   readonly placing: boolean;
+  /** Whether a path is being placed, or has ended and waits to be ink. */
+  readonly placingPath: boolean;
   /** Whether the drawing holds no stroke and no base layer. */
   readonly empty: boolean;
   readonly saving: boolean;
@@ -545,9 +566,10 @@ export interface ButtonStates {
  * Which of the editor's buttons are pressed and which are turned off, from
  * what it holds: a tool or a shape shows pressed while drawing, not while
  * moving the picture; Toggle fill is for shapes, and Flat ends for strokes
- * that can end flat; the picture's buttons need a picture; Undo is on while
- * there is a step or a corner to take back; Up and Down need something to
- * move, and not while making ink; and Save and Next wait for a save.
+ * that can end flat; Finish path is for a path being placed or adjusted; the
+ * picture's buttons need a picture; Undo is on while there is a step or a
+ * corner to take back; Up and Down need something to move, and not while
+ * making ink; and Save and Next wait for a save.
  */
 export function buttonStates(state: ButtonInputs): ButtonStates {
   const drawing = !state.moving;
@@ -577,6 +599,7 @@ export function buttonStates(state: ButtonInputs): ButtonStates {
     pressed,
     disabled: {
       fill: !shaped,
+      finish: !state.placingPath,
       move: !state.picture,
       remove: !state.picture,
       ink: !state.picture,
@@ -611,14 +634,14 @@ export const quickStart = {
     "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
     "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle, or with the grid on to put the box's corners on the grid. Press it again to draw freehand. A shape drawn with the eraser is tinted until it is done.",
     "Polygon (Y) draws a shape with straight sides and sharp corners: click each corner, then click the first corner again to close it, or the last corner, or press Enter, to leave it open. With the grid on, hold Shift as you click to put that corner on the grid. Undo takes back a corner, and Esc drops the shape.",
-    "Path (A) places a curve by its points, as the pen or the eraser would draw along it: click for a corner, or press and drag for a smooth point, whose handle follows the pointer and sets the curve's direction there. While you place it, drag any point or handle's end to move it; a handle dragged back onto its point leaves a corner. Click the first point to close the path, or the last point, or press Enter, to leave it open. With the grid on, hold Shift to put a point, or a handle's end, on the grid. Undo takes back the last point or move, and Esc drops the path. Once it ends, it is ink like any other stroke.",
+    "Path (A) places a curve by its points, as the pen or the eraser would draw along it: click for a corner, or press and drag for a smooth point, whose handle follows the pointer and sets the curve's direction there. Drag any point or handle's end to move it; a handle dragged back onto its point leaves a corner. Click the first point to close the path, or the last point, or press Enter, to leave it open. It then waits for you to adjust its points and handles, with no curve following the pointer and nothing else drawn, until Finish path, or Enter again, makes it ink; Finish path also does while you place it. With the grid on, hold Shift to put a point, or a handle's end, on the grid. Undo takes back the last point, move, or ending, and Esc drops the path. Once it is ink, it is like any other stroke.",
     "Toggle fill (B) is a switch, not a tool to click a shape with: while it is on, Ellipse and a closed Polygon or Path draw solid shapes, with their line at the brush size as without fill and everything inside it filled. The pen makes a solid shape, and the eraser a hole of its shape.",
     "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots as a guide, and nothing goes to them unless you hold Shift: then each stroke end or corner you place goes to the nearest dot. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
     "Flat ends (T), with the grid on, stops an end of a freehand stroke or a path that Shift put on a row flush with that row, rather than rounding past it, if it comes in at 45° or steeper; one running along the row stays round. It is off until you turn it on, and ellipses and polygons are never cut.",
     "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
     "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell's width with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
     "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the left and right arrow keys move along it, and so does the scroll bar below it, which shows where the view is while the drawing reaches past it. Fit (F) centres the drawing. Pressed while you draw, Zoom and Fit wait until you let go, so that what you draw ends where it shows, and moving along carries what you draw with the view. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
-    "Paste, drop, or choose (Choose picture…) a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
+    "Paste, drop, or choose (Choose picture…) a picture to trace. It comes at its own size, scaled down only to fit the drawing area, and a symbol's own image lies over the strokes it shows. Move (M) positions it; the wheel, or + and −, scale it about its middle in small steps. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
     "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
     "Readings and translations, beside the name, say how the symbol is read and what it means, apart from its name: one per line, the main one first. Saving keeps them with the symbol, and the lists find a symbol by them. The library changes them without opening the editor.",
     "Saving a changed symbol that your notes use more than once first asks whether to Replace it everywhere. For a variant, start a new symbol with Copy from instead.",

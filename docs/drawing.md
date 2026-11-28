@@ -149,18 +149,28 @@ with round ends.
   first, then the last. A click on a point or a handle's end without a drag
   places a point there, except on the first point or the last.
 - Click the first point to close the path, once it has two, or the last point,
-  as a double-click does, or press Enter, to leave it open.
-- Undo (Mod+Z) takes back the last point placed or the last drag, and the path
-  with its first point. Esc drops the path; so does the close button, before it
-  closes the editor, and Clear, with the rest of the drawing. Choosing the pen,
-  the eraser, or a brush size while placing it changes the whole path; choosing
-  another shape, Save, or **Next** ends it with the points it has.
+  as a double-click does, or press Enter, to leave it open. The path is not ink
+  yet: it waits for you to adjust it, and the status line says how to finish it.
+  No curve follows the pointer any more, and you can drag its points and
+  handles' ends as while you placed it, a closed path's too. A click places
+  nothing and ends nothing, and a press away from every point and handle's end
+  draws nothing, so nothing else is drawn until the path is ink.
+- **Finish path** (Enter) makes the path ink. Press Enter again, or the button,
+  once the path has ended or closed. The button also makes a path ink while you
+  still place it, with the points it has, leaving it open.
+- Undo (Mod+Z) takes back the last point placed or the last drag, then the
+  ending or closing, back to placing the path, and the path with its first
+  point. Esc drops the path, before it is ink; so does the close button, before
+  it closes the editor, and Clear, with the rest of the drawing. Choosing the
+  pen, the eraser, or a brush size meanwhile changes the whole path; choosing
+  another shape, Save, or **Next** makes it ink with the points it has, open, or
+  closed if you closed it.
 
-Once it ends, a path is ink like any other stroke: one Undo takes all of it
-back, the eraser takes away from it, and its points and handles can't be moved
-again. It is saved as an ordinary stroke along the curve, so a symbol with paths
-opens and looks the same in earlier versions of Inkline. Press **Path** again to
-draw freehand; **Next** keeps it on.
+Once it is ink, a path is like any other stroke: one Undo takes all of it back,
+the eraser takes away from it, and its points and handles can't be moved again.
+It is saved as an ordinary stroke along the curve, so a symbol with paths opens
+and looks the same in earlier versions of Inkline. Press **Path** again to draw
+freehand; **Next** keeps it on.
 
 With the grid on, a point or a handle's end goes on the grid only if Shift is
 held as you place it: a point as you press, a handle's end, or a point you move,
@@ -316,13 +326,13 @@ The grid, though, has twice as many cells each way while zoomed, so the default
 5 cells across the x-height become 10, for placing fine detail. Every point of
 the usual grid stays a point of the finer one, so a drawing started in either
 view lines up in the other, and zooming out puts the usual grid back where it
-was, however much you drew while zoomed. A polygon being placed, and,
-**Unreleased**, a path, keeps the grid it started on until it ends, and Shift
-with an arrow key moves a picture by a column of the grid shown. **Grid size**
-keeps its range of 2 to 10, and saved symbols are not affected. On a symbol you
-open again, the usual grid follows the ends you placed with Shift, so after
-placing them mostly on points of the finer grid alone it can lie half a cell
-from where it was; the finer grid passes through them either way.
+was, however much you drew while zoomed. A polygon being placed keeps the grid
+it started on until it ends, and, **Unreleased**, a path until it is ink, and
+Shift with an arrow key moves a picture by a column of the grid shown. **Grid
+size** keeps its range of 2 to 10, and saved symbols are not affected. On a
+symbol you open again, the usual grid follows the ends you placed with Shift, so
+after placing them mostly on points of the finer grid alone it can lie half a
+cell from where it was; the finer grid passes through them either way.
 
 **Help** opens a built-in quick start with an explanation of each guide, the
 grid, drawing, tracing, and saving. Close Help or press Esc to return to the
@@ -355,15 +365,32 @@ reaches files in the vault and outside it. It shows faintly under the drawing,
 as tall as a capital letter, for you to draw over. It is never saved, nor kept
 in drafts.
 
+**Unreleased:** a picture comes at its own size instead, one pixel of the
+drawing to each of its pixels, so that a picture already the right size keeps
+it. One wider or taller than the drawing area shows is scaled down to fit there
+whole. It sits in the middle of the drawing area, about where a capital letter's
+middle is, moved as little as keeps it inside the area. A symbol's own image,
+such as one chosen from the vault, lies where its strokes are: one line tall,
+from the top of the drawing area to its bottom, however wide, with its left edge
+where the symbol's image starts, so that in that symbol's editor it lies exactly
+over its strokes. Inkline knows a symbol's image by the record it saves in the
+file; a copy without it, as a pasted copy of the image usually is, comes as any
+other picture, at its own size.
+
 **Move** (M) lets you drag the picture and scale it with the wheel; the arrow
 keys move it, and + and − scale it, from the keyboard. Press M again to draw.
-**Unreleased:** while you drag the picture, **Zoom**, **Fit**, and **Make ink**
-wait until you let go, as they do while you draw, so that the picture stays
-under the pointer. If the drawing moves under the pointer anyway while you drag,
-as when Obsidian's page zoom or the window's size changes, the picture comes
-back under the pointer as you go on or let go. **Remove picture** takes it away,
-and another paste replaces it. **Next** takes the picture on to the next symbol
-where it was, so that you can trace a whole inscription from one screenshot.
+**Unreleased:** the wheel scales the picture about its middle, wherever the
+pointer is, and in smaller steps: about a twentieth for a notch of a mouse
+wheel, so that about 14 notches double it, and a trackpad in proportion to how
+far you scroll. + and − scale it by as much as a notch, so that the keys and the
+wheel go through the same sizes. **Unreleased:** while you drag the picture,
+**Zoom**, **Fit**, and **Make ink** wait until you let go, as they do while you
+draw, so that the picture stays under the pointer. If the drawing moves under
+the pointer anyway while you drag, as when Obsidian's page zoom or the window's
+size changes, the picture comes back under the pointer as you go on or let go.
+**Remove picture** takes it away, and another paste replaces it. **Next** takes
+the picture on to the next symbol where it was, so that you can trace a whole
+inscription from one screenshot.
 
 ## Make ink of a picture
 
@@ -388,12 +415,12 @@ gave, and Undo takes it back. Saving while the preview shows makes that ink
 first.
 
 A picture shown larger than its own pixels, such as a small screenshot scaled up
-to a capital's height, is sampled at the drawing's finer resolution before the
-threshold applies. The ink's edges stay sharp instead of spreading across each
-enlarged pixel. Where that would take too many samples, as for a large picture
-enlarged across a wide drawing, it is sampled less finely, down to its own
-pixels. A picture with transparency keeps the soft edges of its own transparency
-when enlarged; see [Limits](./limits.md#files-and-sizes).
+to the size of the symbols you draw, is sampled at the drawing's finer
+resolution before the threshold applies. The ink's edges stay sharp instead of
+spreading across each enlarged pixel. Where that would take too many samples, as
+for a large picture enlarged across a wide drawing, it is sampled less finely,
+down to its own pixels. A picture with transparency keeps the soft edges of its
+own transparency when enlarged; see [Limits](./limits.md#files-and-sizes).
 
 A dim picture, such as a dark screenshot of a game, gets edges as sharp as a
 bright one's. The ink's edge narrows with the contrast between the two sides of

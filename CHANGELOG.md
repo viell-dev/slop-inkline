@@ -19,6 +19,41 @@ even one a public release; earlier pre-releases carry a suffix such as
   under the pointer
   ([#477](https://github.com/viell-dev/slop-inkline/issues/477)).
 
+### Changed
+
+- Obsidian's image viewer, which shows a picture at its full size, no longer
+  opens on a symbol, which is made to be read at the size of the text around it:
+  not on a click in Reading view, embedded notes, hover previews, and a focused
+  canvas card, nor in Live Preview on a click on a symbol already selected, or
+  on Space. So a double-click now opens a symbol in the editor in all those
+  places, where the viewer took its second click, and a selected symbol in Live
+  Preview no longer opens and closes the viewer instead. A callout in Live
+  Preview still shows its text on a click, so right-click a symbol there for
+  **Edit symbol**. Every other picture keeps the viewer, and so do symbols once
+  Inkline is off. The viewer opened on another picture still goes through the
+  note's symbols with the arrow keys, as Inkline cannot leave them out of its
+  list ([#474](https://github.com/viell-dev/slop-inkline/issues/474)).
+- A path no longer becomes ink as soon as it ends. Ending it, with Enter or a
+  click on its last point, or closing it on its first point, leaves it waiting,
+  open or closed, with no curve following the pointer, for its points and
+  handles to be dragged until it looks right; a click then places nothing, and
+  nothing else is drawn meanwhile. Enter again, or the new **Finish path**
+  button, makes it ink; the button also does while the path is still being
+  placed. Undo takes back each adjustment, then the ending itself, back to
+  placing the path. Choosing another shape, saving, and **Next** make a waiting
+  path ink as they do one being placed, and Esc drops it. Paths are still saved
+  as ordinary strokes
+  ([#476](https://github.com/viell-dev/slop-inkline/issues/476)).
+- A picture to trace over now comes at its own size, one pixel of the drawing to
+  each of its pixels, rather than as tall as a capital letter, and is scaled
+  down only when it is wider or taller than the drawing area shows, to fit there
+  whole. A symbol's own image, chosen as the picture, lies where its strokes
+  are, one line tall from the top of the drawing area to its bottom, rather than
+  shrunk to between the cap height and the baseline. With **Move** on, the wheel
+  scales the picture about its middle, wherever the pointer is, and by about a
+  twentieth a notch rather than a fifth; + and − take the same smaller steps
+  ([#472](https://github.com/viell-dev/slop-inkline/issues/472)).
+
 ### Fixed
 
 - A draft opened as a new symbol, from **Inkline: Recover drafts** or a symbol

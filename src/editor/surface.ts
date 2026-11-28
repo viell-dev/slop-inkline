@@ -43,7 +43,7 @@ export type SurfacePicture = Pick<
   | "startDrag"
   | "dragTo"
   | "endDrag"
-  | "scaleAbout"
+  | "scaleBy"
 >;
 
 /** Changes to the view that waited for the pointer to be let go. */
@@ -75,6 +75,11 @@ export interface SurfaceHost {
    * that meanwhile.
    */
   released(waits: ViewWaits): void;
+  /**
+   * A path has ended or closed, or a press beside one that has took hold of
+   * nothing, and it waits to be adjusted and made ink.
+   */
+  pathWaits(): void;
   /** Something dropped on the drawing area that could be a picture. */
   drop(data: DataTransfer | null): void;
   /** Whether the editor has closed, or Inkline was disabled. */
@@ -343,6 +348,7 @@ export class EditorSurface {
         return;
       }
       this.#pressedAt = undefined;
+      const placingPath = session.pathState === "placing";
       if (event.type === "pointercancel") session.cancel();
       // A release, unlike a lost capture, says where the pointer ended.
       else if (event.type === "lostpointercapture") session.end();
@@ -350,6 +356,8 @@ export class EditorSurface {
       // Once the release has been taken where the drawing was.
       this.#letGoAround();
       host.changed();
+      // A click on a path's first or last point ended it.
+      if (placingPath && session.adjustingPath) host.pathWaits();
       this.#afterPress();
     };
     /** Keeps where the pointer pressed to draw is, as it reports it. */
@@ -373,7 +381,9 @@ export class EditorSurface {
           canvas.addClass("is-dragging");
           return;
         }
-        session.begin(point(event), event.shiftKey);
+        // A press that takes hold of nothing on a path that has ended does
+        // nothing, and says how to make it ink.
+        if (!session.begin(point(event), event.shiftKey)) host.pathWaits();
         pressedAt(event);
         hover(event);
         this.render();
@@ -418,7 +428,7 @@ export class EditorSurface {
     canvas.addEventListener("contextmenu", (event) => {
       event.preventDefault();
     });
-    // While moving the picture, the wheel scales it about the pointer.
+    // While moving the picture, the wheel scales it about its middle.
     canvas.addEventListener(
       "wheel",
       (event) => {
@@ -432,9 +442,8 @@ export class EditorSurface {
         }
         if (!moving || picture.picture === undefined) return;
         event.preventDefault();
-        const { x, y } = view.toDocument(event.clientX, event.clientY);
         line.act(() => {
-          picture.scaleAbout(wheelFactor(event.deltaY, event.deltaMode), x, y);
+          picture.scaleBy(wheelFactor(event.deltaY, event.deltaMode));
         });
       },
       { passive: false },

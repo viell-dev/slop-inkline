@@ -58,9 +58,10 @@ search.
 
 Right-click the symbol and choose **Edit symbol**, or put the cursor on its
 embed and run **Inkline: Edit symbol**. In Live Preview, a double-click on the
-symbol opens it too. The editor opens with every stroke as you drew it. Change
-the name in its field to rename the symbol: Obsidian updates the links to it in
-your notes, as its setting for updating internal links says.
+symbol opens it too, and **Unreleased**, in Reading view as well. The editor
+opens with every stroke as you drew it. Change the name in its field to rename
+the symbol: Obsidian updates the links to it in your notes, as its setting for
+updating internal links says.
 
 Next: [Drawing in the editor](./drawing.md) describes every tool, and
 [Symbols in notes](./notes.md) how symbols behave in your notes.

@@ -68,18 +68,31 @@ function scaled(box: Box, factor: number, x: number, y: number): Box {
 
 /**
  * Where a new symbol's surface first shows a picture of `width` × `height`
- * pixels: as tall as from the cap height to the baseline, in the middle.
+ * pixels: at its own size, or scaled down to fit the 576 × 192 pixels the
+ * surface shows if larger, with its middle across in the middle and halfway
+ * between the cap height and the baseline, kept on the surface.
  */
 async function placedBox(width: number, height: number): Promise<Box> {
   const { factor, capTop } = await surfaceLayout();
-  const across = ((144 - capTop) / height) * width;
+  const scale = Math.min(1, 576 / width, 192 / height);
+  const across = width * scale;
+  const down = height * scale;
+  const top = Math.min(Math.max((capTop + 144) / 2 - down / 2, 0), 192 - down);
   return {
     left: (288 - across / 2) * factor,
-    top: capTop * factor,
+    top: top * factor,
     right: (288 + across / 2) * factor,
-    bottom: 144 * factor,
+    bottom: (top + down) * factor,
   };
 }
+
+/** The middle of `box`. */
+function middleOf(box: Box): { x: number; y: number } {
+  return { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 };
+}
+
+/** How much a notch of the wheel, 100 pixels, scales the picture. */
+const notch = Math.exp(100 / 2000);
 
 /**
  * Drops a file of `type` on the surface: `text`, or a 20 × 60 px blue
@@ -257,14 +270,15 @@ describe("The editor", function () {
   });
 
   describe("tracing over a picture", function () {
-    it("shows a pasted picture faintly, as tall as a capital, outside the drawing", async function () {
+    it("shows a pasted picture faintly, at its own size, outside the drawing", async function () {
       await insert();
       expect(await pictureHint()).toBe(
         "Paste, drop, or choose a picture to trace over it.",
       );
-      await pastePicture("red");
+      // Tall enough to cross the x-height, about the middle of a capital.
+      await pastePicture("red", 100);
       await waitForStatus("Tracing over the picture");
-      const expected = await placedBox(40, 40);
+      const expected = await placedBox(100, 100);
       const shown = await waitForPicture((box) => near(box, expected));
       await saveScreenshot("editor-tracing-pasted");
       // Faint: about a third opaque, under the guides and the ink.
@@ -436,12 +450,12 @@ describe("The editor", function () {
       );
     });
 
-    it("moves the picture in Move mode, and scales it about the pointer", async function () {
+    it("moves the picture in Move mode, and scales it about its middle in small steps", async function () {
       await insert();
       await pastePicture("red");
       const placed = await waitForPicture((box) => box !== undefined);
       if (placed === undefined) throw new Error("no picture");
-      const { factor, ratio, border } = await surfaceLayout();
+      const { factor, ratio } = await surfaceLayout();
       await browser.keys(["m"]);
       expect(await pressed("move")).toBe("true");
       expect(await pressed("pen")).toBe("false");
@@ -454,14 +468,16 @@ describe("The editor", function () {
       );
       if (dragged === undefined) throw new Error("no picture");
 
-      // The wheel scales it about the point under the pointer.
-      const { width, height } = await settledSurface();
-      const x = (width / 2 - 20 - border) * ratio;
-      const y = (height / 2 - 10 - border) * ratio;
-      const notch = Math.exp(100 / 500);
+      // The wheel scales it about its middle, wherever the pointer is: a
+      // notch by about a twentieth, and ten notches' turn by e^0.5, with the
+      // pointer far from the middle.
+      const { x, y } = middleOf(dragged);
       await turnWheel(-20, -10, -100);
+      // Two pixels: the old step, a fifth, moved each side by four.
+      await waitForPicture((box) => near(box, scaled(dragged, notch, x, y), 2));
+      await turnWheel(-150, -50, -1000);
       const wheeled = await waitForPicture((box) =>
-        near(box, scaled(dragged, notch, x, y), 3),
+        near(box, scaled(dragged, notch ** 11, x, y), 3),
       );
       if (wheeled === undefined) throw new Error("no picture");
 
@@ -476,20 +492,23 @@ describe("The editor", function () {
       );
       if (nudged === undefined) throw new Error("no picture");
 
-      // + and = scale it up about its middle, and − down.
-      const middleX = (nudged.left + nudged.right) / 2;
-      const middleY = (nudged.top + nudged.bottom) / 2;
+      // + and = scale it up about its middle, and − down, each by a notch:
+      // six presses, so that the steps add up to more than the tolerance.
+      const { x: middleX, y: middleY } = middleOf(nudged);
+      const press = async (key: string, times: number) => {
+        for (let step = 0; step < times; step++) await browser.keys([key]);
+      };
       for (const grow of ["+", "="]) {
-        await browser.keys([grow]);
+        await press(grow, 6);
         await waitForPicture((box) =>
-          near(box, scaled(nudged, notch, middleX, middleY), 3),
+          near(box, scaled(nudged, notch ** 6, middleX, middleY), 3),
         );
-        await browser.keys(["-"]);
+        await press("-", 6);
         await waitForPicture((box) => near(box, nudged, 3));
       }
-      await browser.keys(["-"]);
+      await press("-", 6);
       const shrunk = await waitForPicture((box) =>
-        near(box, scaled(nudged, 1 / notch, middleX, middleY), 3),
+        near(box, scaled(nudged, notch ** -6, middleX, middleY), 3),
       );
       if (shrunk === undefined) throw new Error("no picture");
 
@@ -519,25 +538,26 @@ describe("The editor", function () {
       await browser.keys(["m"]);
       expect(await pressed("move")).toBe("true");
       // WebDriver types as the container's US layout does, so the key is sent
-      // as that layout sends it.
+      // as that layout sends it: six times, so that the steps add up to more
+      // than the tolerance.
       await browser.execute(() => {
         const target = activeDocument.activeElement ?? activeDocument.body;
-        target.dispatchEvent(
-          new KeyboardEvent("keydown", {
-            key: "+",
-            code: "Digit1",
-            keyCode: 49,
-            which: 49,
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
+        for (let step = 0; step < 6; step++) {
+          target.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: "+",
+              code: "Digit1",
+              keyCode: 49,
+              which: 49,
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+        }
       });
-      const notch = Math.exp(100 / 500);
-      const middleX = (placed.left + placed.right) / 2;
-      const middleY = (placed.top + placed.bottom) / 2;
+      const { x, y } = middleOf(placed);
       await waitForPicture((box) =>
-        near(box, scaled(placed, notch, middleX, middleY), 3),
+        near(box, scaled(placed, notch ** 6, x, y), 3),
       );
       expect(await pressed("size-1")).toBe("true");
       expect(await pressed("size-0")).toBe("false");

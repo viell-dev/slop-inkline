@@ -20,6 +20,8 @@ import {
   symbolInBlock,
   symbolInRenderedNote,
   symbolOfImage,
+  symbolViewerClicked,
+  symbolViewerKey,
 } from "./notes/entries.ts";
 import { SymbolSuggest, type SymbolTexts } from "./notes/suggest.ts";
 import {
@@ -60,8 +62,9 @@ export default class InklinePlugin extends Plugin {
     (src) => this.#readSymbol(src),
   );
   /**
-   * What stops Inkline answering right-clicks and double-clicks, in each
-   * document it does.
+   * What stops Inkline answering right-clicks, double-clicks, and the clicks
+   * and keys that would open Obsidian's image viewer, in each document it
+   * does.
    */
   readonly #answering = new Map<Document, AbortController>();
   /** The menus that hold Edit symbol already. */
@@ -430,8 +433,9 @@ export default class InklinePlugin extends Plugin {
    * Edit symbol. Where Obsidian builds a menu, for the image or for a block
    * around it, that menu takes the item; where it shows none, Inkline shows
    * the symbol's. A double-click that reaches a symbol opens it, as Edit
-   * symbol does. Once for each document, for as long as it lasts: a canvas
-   * card's editor makes a new one each time it opens.
+   * symbol does, and the clicks and keys that would open Obsidian's image
+   * viewer on a symbol leave it shut. Once for each document, for as long as
+   * it lasts: a canvas card's editor makes a new one each time it opens.
    */
   #offerEditing(doc: Document): void {
     const view = doc.defaultView;
@@ -475,17 +479,36 @@ export default class InklinePlugin extends Plugin {
       },
       { signal },
     );
-    // In Live Preview, a click on a selected image opens Obsidian's image
-    // viewer, unless its default is prevented by then, and a double-click's
-    // first click selects it. So the viewer stays shut for a symbol's second
-    // click, and for any after it, while the first keeps what Obsidian does.
+    // Obsidian's image viewer stays shut for a symbol, which is read at the
+    // size of the text around it, and so a double-click's second click
+    // reaches the symbol. Obsidian opens the viewer for a click whose default
+    // is not prevented by then, and the first click on a symbol in Live
+    // Preview, which selects it, keeps what Obsidian does. A click on a
+    // symbol after the first of a double-click, which opens it in the editor,
+    // has its default prevented too, as before, but for one on the sheet a
+    // canvas keeps over a card that is not focused, which the canvas answers.
     doc.addEventListener(
       "click",
       (event) => {
-        const image = symbolDoubleClicked(event);
+        const image = symbolViewerClicked(event) ?? symbolDoubleClicked(event);
         if (
           image !== undefined &&
           image === event.targetNode &&
+          symbolOfImage(this.app, image) !== undefined
+        ) {
+          event.preventDefault();
+        }
+      },
+      { capture: true, signal },
+    );
+    // Space opens the viewer on the picture Live Preview has selected, and
+    // does nothing else there: with a symbol selected, it does nothing.
+    doc.addEventListener(
+      "keydown",
+      (event) => {
+        const image = symbolViewerKey(event);
+        if (
+          image !== undefined &&
           symbolOfImage(this.app, image) !== undefined
         ) {
           event.preventDefault();

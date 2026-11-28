@@ -62,7 +62,7 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | O                         | Ellipse     | Draw ellipses by dragging, or freehand again.            |
 | Y                         | Polygon     | Draw shapes by clicking their corners, or freehand.      |
 | A                         | Path        | **Unreleased:** curves by their points, or freehand.     |
-| Enter                     |             | End a shape being placed, leaving it open.               |
+| Enter                     | Finish path | End a shape being placed; **Unreleased:** finish a path. |
 | B                         | Toggle fill | Fill ellipses, closed polygons and **Unreleased** paths. |
 | 1, 2, 3, 4                | S, M, L, XL | Choose the brush size.                                   |
 | Mod+Z                     | Undo        | Undo the last change, or the last point placed.          |
@@ -98,6 +98,9 @@ scale it. Otherwise, the up and down arrow keys move the drawing, and while
 goes from the name field to the button that shows the readings and translations;
 Enter or Space on it opens their fields and moves there, where Enter starts
 another value. A second press closes them and returns to the drawing.
+
+**Unreleased:** + and − scale the picture about its middle by about a twentieth
+a press, as a notch of the wheel does.
 
 Copy from and Next are only in the editor for a new symbol. Make ink's threshold
 is a slider, which its arrow keys move; **Light ink**, **Apply**, and **Cancel**

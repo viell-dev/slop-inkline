@@ -113,6 +113,18 @@ must keep released files readable and looking the same, as
 - A picture to trace over, chosen with **Choose picture…** from a folder outside
   the vault, shows on the drawing area, and puts no file in the vault
   ([choose-picture.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/choose-picture.e2e.ts)).
+  **Unreleased:** a symbol saved from a stroke as tall as the drawing area,
+  chosen as the picture in its own editor, shows where its ink was, to two
+  device pixels (the same file). A pasted or dropped picture shows at its own
+  size about the middle of a capital, and an inscription wider than the drawing
+  area comes whole; with **Move** on, the wheel scales the picture about its
+  middle with the pointer away from it, a notch by about a twentieth, as + and −
+  do
+  ([tracing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/tracing.e2e.ts),
+  [journey.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/journey.e2e.ts),
+  with the arithmetic in
+  [reference.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/reference.test.ts),
+  [#472](https://github.com/viell-dev/slop-inkline/issues/472)).
 
 ### Symbols read as characters
 
@@ -364,12 +376,19 @@ must keep released files readable and looking the same, as
   redraw of its record. While it is placed, the next curve follows the pointer
   after a drag as after a click, and pointing at the first point shows the
   filled shape a click there makes; Undo takes back a point and a drag, Esc and
-  the close button drop it, a point and a handle's end dragged move the curve,
-  Enter, a click on the last point, and **Next** end it, **Next** keeping Path
-  on, and a click on its first point closes it, filled with **Toggle fill**;
-  afterwards one Undo takes back all of it. The eraser's path takes away the ink
-  along its curve, Flat ends cuts an end Shift put on a row, and the symbol
-  reopened holds the same strokes, with nothing left to place
+  the close button drop it, and a point and a handle's end dragged move the
+  curve. Enter or a click on the last point ends it, and a click on its first
+  point closes it, filled with **Toggle fill**, and it is not ink yet: no curve
+  follows the pointer, its controls stay, and the status line says how to finish
+  it, again at a press beside it, which places and draws nothing. A click on its
+  first or last point then closes or ends nothing, a point dragged moves it, a
+  closed one's too, and Undo takes back the drag and then the ending, back to
+  placing; Esc and the close button drop it, and Enter again, **Finish path**,
+  another shape, Mod+S, and **Next** make it ink, **Next** keeping Path on and a
+  closed path saved closed. Afterwards one Undo takes back all of it. The
+  eraser's path takes away the ink along its curve, Flat ends cuts an end Shift
+  put on a row, and the symbol reopened holds the same strokes, with nothing
+  left to place
   ([path.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/path.e2e.ts)).
   **Zoom** pressed while a path's handle is dragged waits for its release, and
   the path saves the points it would without Zoom
@@ -378,8 +397,9 @@ must keep released files readable and looking the same, as
   saved stroke's outline keep to a quarter circle at every brush size, and each
   step of placing, from a press and a drag to a click on a point, what the
   pointer shows after a drag, which point a press takes where points lie on one
-  another, how near a press must be, Shift on the grid, Undo, and a save moving
-  the drawing
+  another, how near a press must be, Shift on the grid, ending and closing, what
+  a press, a click, and a drag do once it has, Undo, what makes it ink, and a
+  save moving the drawing
   ([path.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/path.test.ts),
   [session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
 - A view that adds each stroke to what it has drawn and measured shows what a
@@ -655,10 +675,16 @@ must keep released files readable and looking the same, as
   Obsidian's image viewer, in Live Preview, a table in it, a popout window, a
   canvas card that is not focused, instead of the card's text, a note on a
   canvas, and a text card's own editor. The first click still puts the cursor at
-  the embed, and a click on the selected symbol later does what it does on a
-  picture. A double-click on a picture, on words, beside a symbol on a card, in
-  Reading view, an embedded note, a hover preview, a focused card, or a callout
-  in Live Preview opens no editor, and once Inkline is off nothing answers one
+  the embed. A double-click on a picture, on words, beside a symbol on a card,
+  or in a callout in Live Preview opens no editor, and once Inkline is off
+  nothing answers one, and a symbol opens the image viewer as any picture does.
+  **Unreleased:** a double-click also opens a symbol already selected in Live
+  Preview, and one in Reading view, an embedded note, a hover preview, and a
+  focused card, instead of the card's text. The viewer opens on none: not on a
+  click there, with Shift or Ctrl held too, nor on a click on the selected
+  symbol in Live Preview or on Space, which leave it selected, while a click and
+  Space open it on a photo. Enter still shows the selected symbol's link, and a
+  click with Shift or Ctrl in Live Preview leaves the selection as on a photo
   ([double-click.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/double-click.e2e.ts)).
 - The library lists symbols and their referring notes, filters by name and
   folder, follows file and link changes, and inserts successive symbols without
