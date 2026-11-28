@@ -1,8 +1,10 @@
 import { browser, expect } from "@wdio/globals";
+import { obsidianPage } from "wdio-obsidian-service";
 import type { Stroke } from "../../../src/format/record.ts";
 import { loadModules } from "../support/browser.ts";
-import { editFile, pressed, save } from "../support/editing.ts";
+import { editFile, inklineOn, pressed, save } from "../support/editing.ts";
 import {
+  clickTop,
   draw,
   markEditor,
   openAtMarker,
@@ -515,6 +517,55 @@ describe("Path", function () {
     // One Undo takes back a whole path once it is ink.
     await browser.keys(["Control", "z"]);
     expect(await draftStrokes(2)).toHaveLength(2);
+  });
+
+  // A test that fails midway can leave Inkline off, which every test after
+  // it would then fail on.
+  afterEach(async function () {
+    if (!(await inklineOn())) {
+      await obsidianPage.enablePlugin("inkline");
+      await loadModules();
+    }
+  });
+
+  it("is kept as adjusted, as ink in the draft, when Inkline is turned off while it waits", async function () {
+    await openPath();
+    await click([0.2, 0.6], [0.6, 0.6]);
+    await browser.keys("Enter");
+    await waitForStatus(waiting("ended"));
+    // Its last point dragged up while it waits.
+    await drag([0.6, 0.6], [0.6, 0.25]);
+    await waitForMarks([0.2, 0.6], [0.6, 0.25]);
+    expect(await draftNow()).toBe(0);
+    // Turning Inkline off ends it, as ink, and keeps the draft.
+    await obsidianPage.disablePlugin("inkline");
+    const [kept] = await draftStrokes(1);
+    await obsidianPage.enablePlugin("inkline");
+    await loadModules();
+    // The same note, where the cursor still is, offers it back.
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await clickTop("Restore");
+    await waitForEditor();
+    await save();
+    const [saved] = await savedStrokes();
+    // The ends of a stroke, and the way from the first to the last: a save
+    // can move the whole drawing across, but not change its shape.
+    const ends = (stroke: Stroke | undefined) => {
+      const points = pixels(stroke);
+      const first = points[0] ?? { x: 0, y: 0 };
+      const last = points.at(-1) ?? first;
+      return {
+        count: points.length,
+        dx: last.x - first.x,
+        dy: last.y - first.y,
+      };
+    };
+    expect(ends(saved).count).toBe(ends(kept).count);
+    expect(ends(saved).dx).toBeCloseTo(ends(kept).dx, 0);
+    expect(ends(saved).dy).toBeCloseTo(ends(kept).dy, 0);
+    // Where the drag put its last point: across, and well above its first.
+    expect(ends(saved).dx).toBeGreaterThan(20);
+    expect(ends(saved).dy).toBeLessThan(-20);
   });
 
   it("waits once ended to be adjusted, does nothing at a press beside it, and Undo takes back the ending", async function () {
