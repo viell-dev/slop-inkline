@@ -326,7 +326,7 @@ export class EditorSurface {
         return;
       }
       this.#pressedAt = undefined;
-      const placing = session.pathState === "placing";
+      const placingPath = session.pathState === "placing";
       if (event.type === "pointercancel") session.cancel();
       // A release, unlike a lost capture, says where the pointer ended.
       else if (event.type === "lostpointercapture") session.end();
@@ -335,7 +335,7 @@ export class EditorSurface {
       this.#letGoAround();
       host.changed();
       // A click on a path's first or last point ended it.
-      if (placing && session.adjustingPath) host.pathWaits();
+      if (placingPath && session.adjustingPath) host.pathWaits();
       this.#afterPress();
     };
     /** Keeps where the pointer pressed to draw is, as it reports it. */
