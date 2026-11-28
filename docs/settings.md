@@ -19,10 +19,11 @@ the text's size, the usual line height. A size written in an embed, as in
 `![[tower.ink.png|24]]`, stays as written. These settings change how symbols
 show, leaving the PNG files and their strokes as they are.
 
-Obsidian keeps these settings in `data.json`, in Inkline's folder under the
-vault's `.obsidian/plugins/`. When you update Inkline by hand, replace only the
-plugin's three files there, as [Update](./install.md#update) says: replacing the
-whole folder puts every setting back to its default.
+Obsidian keeps these settings in `data.json`, in Inkline's folder,
+`.obsidian/plugins/inkline/`, or `plugins/inkline/` in the vault's own
+configuration directory if it uses another. When you update Inkline by hand,
+replace only the plugin's three files there, as [Update](./install.md#update)
+says: replacing the whole folder puts every setting back to its default.
 
 The trigger changes at once. It has one to eight characters, no whitespace or
 `[`, `]`, or `|`, and at least one character that is not a letter or digit. An

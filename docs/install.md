@@ -47,8 +47,11 @@ below.
    symbol saved by 0.9.2 or later opens as it is, and one saved by an earlier
    version opens as a picture, as [Update](#update) says. GitHub's **Source
    code** archives contain source files, not the built plugin.
-2. Extract the ZIP into your vault's `.obsidian/plugins/` directory. The ZIP
-   contains its own `inkline/` folder, so the result must be:
+2. If the vault has an `inkline/` folder already, follow [Update](#update)
+   instead: that folder also holds `data.json`, your Inkline settings, and
+   replacing the whole folder loses them. Otherwise, extract the ZIP into your
+   vault's `.obsidian/plugins/` directory. The ZIP contains its own `inkline/`
+   folder, so the result must be:
 
    ```text
    .obsidian/plugins/inkline/main.js
@@ -58,10 +61,6 @@ below.
 
    The `.obsidian` directory is hidden on some systems. If your vault uses a
    different configuration directory, use its `plugins/` directory instead.
-
-   If the vault has an `inkline/` folder already, follow [Update](#update)
-   instead: that folder also holds `data.json`, your Inkline settings, and
-   replacing the whole folder loses them.
 
 3. In Obsidian, open **Settings → Community plugins**, turn community plugins on
    if needed, and enable **Inkline**. Restart Obsidian if it is not listed.
@@ -82,11 +81,11 @@ the release is kept.
 ## Install the loose files
 
 Download `main.js`, `manifest.json`, and `styles.css` from the same GitHub
-release. Create `.obsidian/plugins/inkline/` in your vault and put all three
-files inside it, then enable **Inkline** under **Settings → Community plugins**.
-A vault with a different configuration directory has its plugins there instead.
-If the folder is there already, replace only those three files, and keep
-`data.json`, which holds your settings.
+release. If the vault has Inkline already, follow [Update](#update) with these
+three files. Otherwise, create `.obsidian/plugins/inkline/` in your vault and
+put all three files inside it, then enable **Inkline** under **Settings →
+Community plugins**. A vault with a different configuration directory has its
+plugins there instead.
 
 ## Build and install a development build
 
@@ -115,12 +114,12 @@ too:
 
 1. Save any open drawing, then turn Inkline off under **Settings → Community
    plugins**.
-2. Download the newer release's install ZIP and extract it into the same
-   `.obsidian/plugins/` directory. Replace the three plugin files in `inkline/`;
-   keep `data.json`, which holds your settings. If your tool extracts elsewhere,
-   copy only the three plugin files into the existing `inkline/` directory
-   rather than replacing the directory. For a loose-file installation, replace
-   only those same three files.
+2. Download the newer release's install ZIP and extract it outside the vault.
+   From its `inkline/` folder, copy only the three plugin files, `main.js`,
+   `manifest.json`, and `styles.css`, into the vault's existing
+   `.obsidian/plugins/inkline/` folder, replacing the files there, and keep
+   `data.json`, which holds your settings. For a loose-file installation,
+   download those three files from the release and copy them in the same way.
 
    ::: warning Keep data.json
 
