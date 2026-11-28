@@ -99,6 +99,9 @@ goes from the name field to the button that shows the readings and translations;
 Enter or Space on it opens their fields and moves there, where Enter starts
 another value. A second press closes them and returns to the drawing.
 
+**Unreleased:** + and − scale the picture about its middle by about a twentieth
+a press, as a notch of the wheel does.
+
 Copy from and Next are only in the editor for a new symbol. Make ink's threshold
 is a slider, which its arrow keys move; **Light ink**, **Apply**, and **Cancel**
 are buttons, as are **Choose picture…**, which opens the system's file dialog,

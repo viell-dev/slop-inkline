@@ -113,6 +113,18 @@ must keep released files readable and looking the same, as
 - A picture to trace over, chosen with **Choose picture…** from a folder outside
   the vault, shows on the drawing area, and puts no file in the vault
   ([choose-picture.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/choose-picture.e2e.ts)).
+  **Unreleased:** a symbol saved from a stroke as tall as the drawing area,
+  chosen as the picture in its own editor, shows where its ink was, to two
+  device pixels (the same file). A pasted or dropped picture shows at its own
+  size about the middle of a capital, and an inscription wider than the drawing
+  area comes whole; with **Move** on, the wheel scales the picture about its
+  middle with the pointer away from it, a notch by about a twentieth, as + and −
+  do
+  ([tracing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/tracing.e2e.ts),
+  [journey.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/journey.e2e.ts),
+  with the arithmetic in
+  [reference.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/reference.test.ts),
+  [#472](https://github.com/viell-dev/slop-inkline/issues/472)).
 
 ### Symbols read as characters
 

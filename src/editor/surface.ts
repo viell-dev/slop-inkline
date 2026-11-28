@@ -41,7 +41,7 @@ export type SurfacePicture = Pick<
   | "startDrag"
   | "dragTo"
   | "endDrag"
-  | "scaleAbout"
+  | "scaleBy"
 >;
 
 /** Changes to the view that waited for the pointer to be let go. */
@@ -406,7 +406,7 @@ export class EditorSurface {
     canvas.addEventListener("contextmenu", (event) => {
       event.preventDefault();
     });
-    // While moving the picture, the wheel scales it about the pointer.
+    // While moving the picture, the wheel scales it about its middle.
     canvas.addEventListener(
       "wheel",
       (event) => {
@@ -430,9 +430,8 @@ export class EditorSurface {
         }
         if (!moving || picture.picture === undefined) return;
         event.preventDefault();
-        const { x, y } = view.toDocument(event.clientX, event.clientY);
         line.act(() => {
-          picture.scaleAbout(wheelFactor(event.deltaY, event.deltaMode), x, y);
+          picture.scaleBy(wheelFactor(event.deltaY, event.deltaMode));
         });
       },
       { passive: false },

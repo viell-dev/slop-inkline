@@ -8,16 +8,18 @@ import {
 import {
   movePicture,
   placePicture,
-  scalePicture,
+  scaleAboutMiddle,
   wheelFactor,
 } from "../../../src/editor/reference.ts";
+import { recordChunkType } from "../../../src/format/ink-file.ts";
+import { writeChunks } from "../../../src/format/png.ts";
 import { lineBox } from "../../../src/ink/geometry.ts";
 
 /** A picture's stand-in: decoding and its pixels need a browser. */
-function bitmap(): ImageBitmap & { closed: number } {
+function bitmap(width = 40, height = 20): ImageBitmap & { closed: number } {
   return {
-    width: 40,
-    height: 20,
+    width,
+    height,
     closed: 0,
     close() {
       this.closed++;
@@ -124,7 +126,7 @@ describe("PictureTracing", () => {
     expect(tracing.picture?.placement).toEqual(saved);
   });
 
-  it("moves, scales about a point, and scales a step about its middle", () => {
+  it("moves, and scales about its middle by a factor or a step", () => {
     const { tracing, calls } = editor();
     tracing.takeOver(carried(), 0);
     const placed = tracing.picture?.placement;
@@ -132,23 +134,17 @@ describe("PictureTracing", () => {
     tracing.move(3, -2);
     const moved = movePicture(placed, 3, -2);
     expect(tracing.picture?.placement).toEqual(moved);
-    tracing.scaleAbout(2, 10, 20);
-    const scaled = scalePicture(moved, 2, 10, 20);
+    // The wheel's factor, about the middle of the 40 × 20 picture.
+    tracing.scaleBy(2);
+    const scaled = scaleAboutMiddle(moved, 40, 20, 2);
     expect(tracing.picture?.placement).toEqual(scaled);
+    // + and −, by as much as a notch of the wheel.
     tracing.scaleStep(true);
-    const middleX = scaled.x + (40 * scaled.scale) / 2;
-    const middleY = scaled.y + (20 * scaled.scale) / 2;
-    const grown = scalePicture(scaled, wheelFactor(-100), middleX, middleY);
+    const grown = scaleAboutMiddle(scaled, 40, 20, wheelFactor(-100));
     expect(tracing.picture?.placement).toEqual(grown);
     tracing.scaleStep(false);
-    const { x, y, scale } = grown;
     expect(tracing.picture?.placement).toEqual(
-      scalePicture(
-        grown,
-        1 / wheelFactor(-100),
-        x + (40 * scale) / 2,
-        y + (20 * scale) / 2,
-      ),
+      scaleAboutMiddle(grown, 40, 20, 1 / wheelFactor(-100)),
     );
     expect(calls).toEqual(["render", "render", "render", "render"]);
   });
@@ -329,29 +325,58 @@ describe("PictureTracing, once a picture decodes", () => {
     vi.unstubAllGlobals();
   });
 
-  it("traces over it as tall as a capital letter, in the middle of the surface", async () => {
+  it("traces over it at its own size, where a capital's middle is, in the middle of the surface", async () => {
     const { tracing, said, calls } = editor({ view: view200, capHeight: 50 });
     await tracing.trace(new Blob(["picture"]));
     expect(tracing.picture?.image).toBe(decoded[0]);
-    expect(tracing.picture?.placement).toEqual(
-      placePicture(40, 20, 50, lineBox.baseline, view200.center),
-    );
+    // Halfway between the cap height, 50, and the baseline, 144.
+    expect(tracing.picture?.placement).toEqual({ x: 80, y: 87, scale: 1 });
     expect(said).toEqual([tracingText]);
     expect(calls).toEqual(["controls", "render"]);
   });
 
-  it("puts it a capital's usual height above the baseline before the font is measured", async () => {
+  it("puts it about a capital's usual middle before the font is measured", async () => {
     const { tracing } = editor();
     await tracing.trace(new Blob(["picture"]));
     expect(tracing.picture?.placement).toEqual(
       placePicture(
         40,
         20,
-        lineBox.baseline - 0.7 * lineBox.pxPerEm,
-        lineBox.baseline,
-        view200.center,
+        { left: 0, top: 0, right: 200, bottom: lineBox.height },
+        {
+          x: view200.center,
+          y: (lineBox.baseline - 0.7 * lineBox.pxPerEm + lineBox.baseline) / 2,
+        },
       ),
     );
+  });
+
+  it("scales a picture larger than the surface shows down to fit it", async () => {
+    vi.stubGlobal("createImageBitmap", () => Promise.resolve(bitmap(400, 192)));
+    const { tracing } = editor({ view: view200, capHeight: 50 });
+    await tracing.trace(new Blob(["picture"]));
+    // Half its size, 200 × 96, about the middle and between the guides.
+    expect(tracing.picture?.placement).toEqual({ x: 0, y: 49, scale: 0.5 });
+  });
+
+  it("puts a symbol's own image over its strokes, at its own size however wide", async () => {
+    vi.stubGlobal("createImageBitmap", () =>
+      Promise.resolve(bitmap(400, lineBox.height)),
+    );
+    const { tracing } = editor({ view: view200, capHeight: 50 });
+    const header = new Uint8Array(13);
+    const view = new DataView(header.buffer);
+    view.setUint32(0, 400);
+    view.setUint32(4, lineBox.height);
+    header.set([8, 6, 0, 0, 0], 8);
+    const symbol = writeChunks([
+      { type: "IHDR", data: header },
+      { type: recordChunkType, data: new Uint8Array(8) },
+      { type: "IDAT", data: new Uint8Array([0]) },
+      { type: "IEND", data: new Uint8Array() },
+    ]);
+    await tracing.trace(new Blob([symbol]));
+    expect(tracing.picture?.placement).toEqual({ x: 0, y: 0, scale: 1 });
   });
 
   it("closes the picture it replaces, and keeps the new one", async () => {

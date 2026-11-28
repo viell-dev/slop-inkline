@@ -400,7 +400,7 @@ export const controls: readonly Control[] = [
     row: "picture",
     text: "Move",
     description:
-      "drag the picture or use the arrow keys; the wheel or + and − scale it",
+      "drag the picture or use the arrow keys; the wheel or + and − scale it about its middle",
     keys: [chord("m")],
     run: (editor) => {
       editor.toggleMove();
@@ -641,7 +641,7 @@ export const quickStart = {
     "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
     "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell's width with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
     "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the left and right arrow keys move along it, and Fit (F) centres it. Pressed while you draw, Zoom and Fit wait until you let go, so that what you draw ends where it shows, and moving along carries what you draw with the view. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
-    "Paste, drop, or choose (Choose picture…) a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
+    "Paste, drop, or choose (Choose picture…) a picture to trace. It comes at its own size, scaled down only to fit the drawing area, and a symbol's own image lies over the strokes it shows. Move (M) positions it; the wheel, or + and −, scale it about its middle in small steps. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
     "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
     "Readings and translations, beside the name, say how the symbol is read and what it means, apart from its name: one per line, the main one first. Saving keeps them with the symbol, and the lists find a symbol by them. The library changes them without opening the editor.",
     "Saving a changed symbol that your notes use more than once first asks whether to Replace it everywhere. For a variant, start a new symbol with Copy from instead.",
