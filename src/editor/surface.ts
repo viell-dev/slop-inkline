@@ -270,7 +270,10 @@ export class EditorSurface {
    */
   watchSize(): void {
     const { canvas } = this.#view;
-    this.#resize = new ResizeObserver(() => {
+    // The drawing area's own window's observer, which reports as that window
+    // draws, as a popout's does (#498).
+    const view = canvas.doc.defaultView ?? window;
+    this.#resize = new view.ResizeObserver(() => {
       this.resized(() => {
         this.resizeView();
       });
