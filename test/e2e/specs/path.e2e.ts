@@ -196,24 +196,31 @@ function waiting(state: "ended" | "closed"): string {
 }
 
 /**
- * Enter, as a key held down repeats it, `times` times, to what has the focus:
+ * `key`, as a key held down repeats it, `times` times, to what has the focus:
  * WebDriver's keys are each pressed and let go, and never repeat.
  */
-async function repeatEnter(times: number): Promise<void> {
-  await browser.execute((times) => {
-    const target = document.activeElement ?? document.body;
-    for (let count = 0; count < times; count++) {
-      target.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Enter",
-          code: "Enter",
-          repeat: true,
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-    }
-  }, times);
+async function repeatKey(
+  key: "Enter" | "Escape",
+  times: number,
+): Promise<void> {
+  await browser.execute(
+    (key, times) => {
+      const target = document.activeElement ?? document.body;
+      for (let count = 0; count < times; count++) {
+        target.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key,
+            code: key,
+            repeat: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      }
+    },
+    key,
+    times,
+  );
 }
 
 /** Whether Finish path is on, or "missing" if the editor has no such button. */
@@ -515,7 +522,7 @@ describe("Path", function () {
     // fresh press makes it ink.
     await browser.keys("Enter");
     await waitForStatus(waiting("ended"));
-    await repeatEnter(3);
+    await repeatKey("Enter", 3);
     await browser.pause(200);
     expect(await finishOn()).toBe(true);
     expect((await marksShown()).all).toBeGreaterThan(0);
@@ -560,7 +567,15 @@ describe("Path", function () {
       const [, , kept] = await draftStrokes(3);
       await browser.keys("Escape");
       await waitForStatus("Path dropped: Undo brings it back");
+      // Esc held down, which repeats, drops it once and closes nothing, so
+      // that Undo can still bring it back.
+      await repeatKey("Escape", 3);
+      await browser.pause(200);
       expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
+      // No question came over the editor either.
+      expect(await browser.$$(".modal-container").getElements()).toHaveLength(
+        1,
+      );
       expect(await draftStrokes(2)).toHaveLength(2);
       await browser.waitUntil(async () => (await marksShown()).all === 0, {
         timeoutMsg: "the dropped path's controls stayed",
