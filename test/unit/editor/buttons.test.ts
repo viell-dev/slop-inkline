@@ -90,6 +90,7 @@ describe("controls", () => {
       "polygon",
       "path",
       "fill",
+      "finish",
     ]);
     expect(row("history")).toEqual([
       ...brushSizes.map((_, index) => `size-${String(index)}`),
@@ -123,25 +124,30 @@ describe("controls", () => {
   });
 
   it("leaves the keys that do more than a button's to the controls", () => {
-    // Mod+S saves with no button, Enter ends a shape on the drawing area
-    // alone, and while Move is on the arrow keys move the picture and + and
-    // − scale it: the controls give each of those keys one handler, before
-    // the buttons' keys, as Obsidian's scope runs only the first that
-    // matches.
-    const theirs = ["Mod+S", "Enter", "+", "Shift++", "=", "-"];
+    // Mod+S saves with no button, and while Move is on + and − scale the
+    // picture: the controls give each of those keys one handler, before the
+    // buttons' keys, as Obsidian's scope runs only the first that matches.
+    // So do the keys that buttons show but that do more than they do: the
+    // arrow keys also move the picture while Move is on, and Enter, on the
+    // drawing area alone, also ends a shape being placed.
+    const theirs = ["Mod+S", "+", "Shift++", "=", "-"];
     for (const control of controls) {
-      const arrows = control.keys.filter(({ key }) => key.startsWith("Arrow"));
-      expect(control.arrowKeys === true, control.id).toBe(arrows.length > 0);
-      expect(arrows.length, control.id).toBe(
-        control.arrowKeys === true ? control.keys.length : 0,
+      const apart = control.keys.filter(
+        ({ modifiers, key }) =>
+          key.startsWith("Arrow") ||
+          (key === "Enter" && modifiers.length === 0),
+      );
+      expect(control.keysApart === true, control.id).toBe(apart.length > 0);
+      expect(apart.length, control.id).toBe(
+        control.keysApart === true ? control.keys.length : 0,
       );
       for (const key of control.keys.map(keyText)) {
         expect(theirs, control.id).not.toContain(key);
       }
     }
     expect(
-      controls.filter((control) => control.arrowKeys).map(({ id }) => id),
-    ).toEqual(["move-up", "move-down"]);
+      controls.filter((control) => control.keysApart).map(({ id }) => id),
+    ).toEqual(["finish", "move-up", "move-down"]);
   });
 
   it("lets the saving keys work while typing, and offers Copy from and Next only for a new symbol", () => {
@@ -177,6 +183,7 @@ describe("controls", () => {
       toggleEllipse: record("toggleEllipse"),
       togglePolygon: record("togglePolygon"),
       togglePath: record("togglePath"),
+      finishPath: record("finishPath"),
       toggleFill: record("toggleFill"),
       setSize: record("setSize"),
       undo: record("undo"),
@@ -225,6 +232,7 @@ describe("controls", () => {
       polygon: ["togglePolygon"],
       path: ["togglePath"],
       fill: ["toggleFill"],
+      finish: ["finishPath"],
       ...Object.fromEntries(
         brushSizes.map((_, index) => [
           `size-${String(index)}`,
@@ -282,6 +290,7 @@ describe("buttonStates", () => {
     canUndo: false,
     canRedo: false,
     placing: false,
+    placingPath: false,
     empty: true,
     saving: false,
   };
@@ -311,6 +320,7 @@ describe("buttonStates", () => {
       },
       disabled: {
         fill: true,
+        finish: true,
         move: true,
         remove: true,
         ink: true,
@@ -462,6 +472,18 @@ describe("buttonStates", () => {
     expect(states({ placing: true }).disabled.undo).toBe(false);
     expect(states({ canRedo: true }).disabled.redo).toBe(false);
     expect(states({ placing: true }).disabled.redo).toBe(true);
+  });
+
+  it("offers Finish path for a path being placed or adjusted alone", () => {
+    expect(states({ shape: "path" }).disabled.finish).toBe(true);
+    // A polygon being placed is not a path.
+    expect(states({ shape: "polygon", placing: true }).disabled.finish).toBe(
+      true,
+    );
+    expect(
+      states({ shape: "path", placing: true, placingPath: true }).disabled
+        .finish,
+    ).toBe(false);
   });
 
   it("holds Save and Next while a save runs", () => {

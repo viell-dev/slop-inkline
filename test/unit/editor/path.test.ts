@@ -266,14 +266,17 @@ describe("PathPlacer", () => {
 
   it("closes on a click on the first point once it has two, and ends on the last", () => {
     const one = clicked([10, 10]);
+    expect(one.state).toBe("placing");
     one.press(at(11, 10), reach);
     // One point clicked again is a dot, as the pen's tap is.
     expect(one.release(at(11, 10))).toBe("ended");
+    expect(one.state).toBe("ended");
     expect(one.nodes).toEqual([corner(10, 10)]);
 
     const two = clicked([10, 10], [50, 10]);
     two.press(at(11, 11), reach);
     expect(two.release(at(11, 11))).toBe("closed");
+    expect(two.state).toBe("closed");
     expect(two.nodes).toHaveLength(2);
 
     const open = clicked([10, 10], [50, 10], [50, 50]);
@@ -285,6 +288,137 @@ describe("PathPlacer", () => {
   it("never ends on the release of the press that started it", () => {
     const placer = new PathPlacer(at(10, 10), reach);
     expect(placer.release(at(10, 10))).toBe("placing");
+  });
+
+  it("ends open where it is at end, as Enter ends it, and only while it is placed", () => {
+    const placer = clicked([10, 10], [50, 10]);
+    placer.move(at(50, 50));
+    placer.end();
+    expect(placer.state).toBe("ended");
+    // The next curve to the pointer is gone, and no corner was placed there.
+    expect(placer.shown).toEqual({
+      nodes: [corner(10, 10), corner(50, 10)],
+      closed: false,
+    });
+    const closed = clicked([10, 10], [50, 10]);
+    closed.press(at(10, 10), reach);
+    closed.release(at(10, 10));
+    closed.end();
+    expect(closed.state).toBe("closed");
+    expect(closed.shown.closed).toBe(true);
+  });
+
+  it("keeps what a press held as Enter ends the path placed it, as a step of its own", () => {
+    // A smooth point being dragged out when Enter comes.
+    const placer = clicked([10, 10]);
+    placer.press(at(50, 10), reach);
+    placer.move(at(55, 10));
+    placer.move(at(60, 10));
+    placer.end();
+    expect(placer.state).toBe("ended");
+    const smooth = { x: 50, y: 10, handle: { x: 10, y: 0 }, onGrid: false };
+    expect(placer.nodes).toEqual([corner(10, 10), smooth]);
+    // The press goes on and is let go elsewhere: it no longer drags.
+    placer.move(at(80, 40));
+    expect(placer.release(at(80, 40))).toBe("ended");
+    expect(placer.nodes).toEqual([corner(10, 10), smooth]);
+    // Undo takes back the ending, then the smooth point.
+    expect(placer.undo()).toBe(true);
+    expect(placer.state).toBe("placing");
+    expect(placer.nodes).toEqual([corner(10, 10), smooth]);
+    expect(placer.undo()).toBe(true);
+    expect(placer.nodes).toEqual([corner(10, 10)]);
+    // A press on a point with no drag yet, as Enter comes, keeps nothing.
+    placer.press(at(10, 10), reach);
+    placer.end();
+    expect(placer.nodes).toEqual([corner(10, 10)]);
+    expect(placer.undo()).toBe(true);
+    expect(placer.state).toBe("placing");
+    expect(placer.undo()).toBe(false);
+  });
+
+  it("moves its points and handles once ended or closed, as while placing it", () => {
+    for (const close of [false, true]) {
+      const placer = clicked([10, 10]);
+      drag(placer, [50, 10], [60, 10]);
+      placer.press(at(close ? 10 : 50, 10), reach);
+      placer.release(at(close ? 10 : 50, 10));
+      expect(placer.state).toBe(close ? "closed" : "ended");
+      // The smooth point moved down, and its handle's end the curve leaves
+      // by dragged up, which turns its mirror with it.
+      expect(drag(placer, [50, 10], [50, 30])).toBe(placer.state);
+      expect(drag(placer, [60, 30], [50, 20])).toBe(placer.state);
+      expect(placer.nodes).toEqual([
+        corner(10, 10),
+        { x: 50, y: 30, handle: { x: 0, y: -10 }, onGrid: false },
+      ]);
+      // It shows as it is, whatever the pointer points at.
+      placer.move(at(90, 90));
+      expect(placer.shown).toEqual({ nodes: placer.nodes, closed: close });
+      placer.move(at(10, 10));
+      expect(placer.shown).toEqual({ nodes: placer.nodes, closed: close });
+      // What a press would take hold of shows as while placing.
+      expect(placer.marks.target).toEqual({ kind: "point", index: 0 });
+    }
+  });
+
+  it("places nothing and ends nothing at a click once ended, and takes hold of nothing beside it", () => {
+    const placer = clicked([10, 10], [50, 10], [50, 50]);
+    placer.end();
+    const nodes = placer.nodes;
+    // Beside every point and handle: nothing to take hold of.
+    expect(placer.press(at(90, 90), reach)).toBe(false);
+    placer.move(at(100, 100));
+    expect(placer.release(at(100, 100))).toBe("ended");
+    expect(placer.nodes).toBe(nodes);
+    // A click on the first, a middle, and the last point, as one that would
+    // close, place a corner, or end a path being placed.
+    for (const [x, y] of [
+      [10, 10],
+      [50, 10],
+      [50, 50],
+    ] as const) {
+      expect(placer.press(at(x, y), reach)).toBe(true);
+      expect(placer.release(at(x, y))).toBe("ended");
+    }
+    expect(placer.nodes).toBe(nodes);
+    // None of it was a step: Undo takes back the ending itself.
+    expect(placer.undo()).toBe(true);
+    expect(placer.state).toBe("placing");
+    expect(placer.nodes).toBe(nodes);
+    // Placing again, the next curve follows the pointer once more.
+    placer.move(at(90, 90));
+    expect(placer.shown.nodes.at(-1)).toEqual(corner(90, 90));
+  });
+
+  it("takes back each adjustment, then the ending or closing, then the points placed", () => {
+    const placer = clicked([10, 10], [50, 10]);
+    placer.press(at(10, 10), reach);
+    placer.release(at(10, 10));
+    expect(placer.state).toBe("closed");
+    drag(placer, [50, 10], [50, 40]);
+    drag(placer, [10, 10], [20, 10]);
+    expect(placer.nodes).toEqual([corner(20, 10), corner(50, 40)]);
+    expect(placer.undo()).toBe(true);
+    expect(placer.nodes).toEqual([corner(10, 10), corner(50, 40)]);
+    expect(placer.state).toBe("closed");
+    // A drag being held, taken back before its release, which then does
+    // nothing.
+    placer.press(at(50, 40), reach);
+    placer.move(at(70, 70));
+    expect(placer.undo()).toBe(true);
+    expect(placer.release(at(70, 70))).toBe("closed");
+    expect(placer.nodes).toEqual([corner(10, 10), corner(50, 40)]);
+    expect(placer.undo()).toBe(true);
+    expect(placer.nodes).toEqual([corner(10, 10), corner(50, 10)]);
+    expect(placer.state).toBe("closed");
+    // The closing, back to placing, with both points.
+    expect(placer.undo()).toBe(true);
+    expect(placer.state).toBe("placing");
+    expect(placer.nodes).toEqual([corner(10, 10), corner(50, 10)]);
+    expect(placer.undo()).toBe(true);
+    expect(placer.undo()).toBe(false);
+    expect(placer.nodes).toEqual([]);
   });
 
   it("places a corner at a click on a point between the first and last, or on a handle's end", () => {

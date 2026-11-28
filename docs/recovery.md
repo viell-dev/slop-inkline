@@ -55,7 +55,8 @@ After each finished stroke, undo, redo, or clearing, and each change of name,
 the editor keeps a draft of the drawing in the vault's local storage, which
 Obsidian keeps on your computer for that vault. Closing Obsidian or a crash then
 loses at most a stroke still being drawn, or a polygon or, **Unreleased**, a
-path still being placed, and turning Inkline off loses nothing: it ends what is
+path still being placed or waiting for **Finish path**, with every change made
+to it since it began, and turning Inkline off loses nothing: it ends what is
 being drawn and keeps the draft. If Obsidian is still renaming the symbol you
 saved as you turn Inkline off, as while it asks about links, the draft follows
 the rename once Obsidian finishes it, with its own copy of any picture you drew

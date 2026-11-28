@@ -11,6 +11,17 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Changed
 
+- **Inkline: Recover drafts** now lists every unsaved drawing kept as a draft,
+  other than one an open editor has, where it listed only those whose symbol's
+  file was gone or did not open, or whose new symbol's note was gone. Each row
+  says what choosing it does. Choosing a symbol whose file opens opens it, which
+  asks to restore that draft, even when the symbol has another. A new symbol's
+  draft whose note is still there opens as a new symbol inserted in no note, as
+  the draft does not record where in the note it was to go, and the question
+  says to insert it with **Inkline: Insert existing symbol** once it is saved.
+  With nothing to list, the list says so and stays open, in place of a long
+  notice that went before it could be read. Drafts are kept as before
+  ([#473](https://github.com/viell-dev/slop-inkline/issues/473)).
 - Obsidian's image viewer, which shows a picture at its full size, no longer
   opens on a symbol, which is made to be read at the size of the text around it:
   not on a click in Reading view, embedded notes, hover previews, and a focused
@@ -23,17 +34,17 @@ even one a public release; earlier pre-releases carry a suffix such as
   Inkline is off. The viewer opened on another picture still goes through the
   note's symbols with the arrow keys, as Inkline cannot leave them out of its
   list ([#474](https://github.com/viell-dev/slop-inkline/issues/474)).
-- **Inkline: Recover drafts** now lists every unsaved drawing kept as a draft,
-  other than one an open editor has, where it listed only those whose symbol's
-  file was gone or did not open, or whose new symbol's note was gone. Each row
-  says what choosing it does. Choosing a symbol whose file opens opens it, which
-  asks to restore that draft, even when the symbol has another. A new symbol's
-  draft whose note is still there opens as a new symbol inserted in no note, as
-  the draft does not record where in the note it was to go, and the question
-  says to insert it with **Inkline: Insert existing symbol** once it is saved.
-  With nothing to list, the list says so and stays open, in place of a long
-  notice that went before it could be read. Drafts are kept as before
-  ([#473](https://github.com/viell-dev/slop-inkline/issues/473)).
+- A path no longer becomes ink as soon as it ends. Ending it, with Enter or a
+  click on its last point, or closing it on its first point, leaves it waiting,
+  open or closed, with no curve following the pointer, for its points and
+  handles to be dragged until it looks right; a click then places nothing, and
+  nothing else is drawn meanwhile. Enter again, or the new **Finish path**
+  button, makes it ink; the button also does while the path is still being
+  placed. Undo takes back each adjustment, then the ending itself, back to
+  placing the path. Choosing another shape, saving, and **Next** make a waiting
+  path ink as they do one being placed, and Esc drops it. Paths are still saved
+  as ordinary strokes
+  ([#476](https://github.com/viell-dev/slop-inkline/issues/476)).
 
 ### Fixed
 

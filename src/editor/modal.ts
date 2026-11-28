@@ -315,6 +315,9 @@ export class InkEditorModal extends Modal {
       togglePath: () => {
         this.#togglePath();
       },
+      finishPath: () => {
+        this.#finishPath();
+      },
       toggleFill: () => {
         this.#toggleFill();
       },
@@ -380,12 +383,17 @@ export class InkEditorModal extends Modal {
       cancelInk: () => {
         this.#tracing.cancelInk();
       },
-      endShape: () => {
+      endShape: (repeats) => {
         const canvas = this.#surface?.view.canvas;
         if (!this.#session.placing || activeDocument.activeElement !== canvas) {
           return false;
         }
-        this.#endPlacing();
+        // Only a fresh press ends a shape or makes a waiting path ink.
+        if (repeats) return true;
+        // A path being placed waits, once it ends, to be adjusted; a second
+        // Enter makes it ink, as a polygon's one does.
+        if (this.#session.endPath()) this.#pathWaits();
+        else this.#endPlacing();
         return true;
       },
       arrowKey: (name, shift) => this.#arrowKey(name, shift),
@@ -485,6 +493,9 @@ export class InkEditorModal extends Modal {
       guidesShown: () => this.#guidesShown,
       released: (waits) => {
         this.#viewAfterPress(waits);
+      },
+      pathWaits: () => {
+        this.#pathWaits();
       },
       drop: (data) => {
         this.#dropped(data);
@@ -1073,12 +1084,38 @@ export class InkEditorModal extends Modal {
 
   /**
    * Ends a polygon or path being placed with the points it has, if there is
-   * one.
+   * one, and makes a path being adjusted ink as it is.
    */
   #endPlacing(): void {
     if (!this.#session.placing) return;
     this.#session.end();
     this.#changed();
+  }
+
+  /**
+   * Makes a path being placed or adjusted ink, for Finish path, and gives the
+   * drawing area back the focus that the button, now off, let go of.
+   */
+  #finishPath(): void {
+    if (!this.#session.placingPath) return;
+    this.#endPlacing();
+    this.#refocus();
+  }
+
+  /**
+   * Says how to make a path that has ended ink, for as long as it waits for
+   * that, as it ends, and at a press beside it, which does nothing, and
+   * shows that it waits.
+   */
+  #pathWaits(): void {
+    const state = this.#session.pathState;
+    if (state === undefined || state === "placing") return;
+    this.#announce(
+      `Path ${state}: adjust its points and handles; Enter or Finish path makes it ink`,
+      () => this.#session.adjustingPath,
+    );
+    this.#updateButtons();
+    this.#render();
   }
 
   #setTool(tool: "pen" | "eraser"): void {
@@ -1147,6 +1184,7 @@ export class InkEditorModal extends Modal {
       canUndo: this.#session.canUndo,
       canRedo: this.#session.canRedo,
       placing: this.#session.placing,
+      placingPath: this.#session.placingPath,
       empty: strokes.length === 0 && base === undefined,
       saving: this.#keeping.saving,
     });
