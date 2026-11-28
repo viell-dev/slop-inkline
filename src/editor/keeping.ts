@@ -401,8 +401,8 @@ export class Keeping {
    * The base layer of {@link #recovered} that this editor could not show: one
    * it took from its file, or one it kept itself that cannot be decoded. Its
    * own draft goes on naming it while it stands in for that draft, so that
-   * nothing of it is dropped before the first save starts writing: names the
-   * file it makes, or takes over the file a first save made.
+   * nothing of it is dropped before the first save has made a file of its own,
+   * or taken over the file a first save made.
    */
   #unshownBase: DraftBase | undefined;
 
@@ -574,10 +574,16 @@ export class Keeping {
       this.#host.showWaiting("");
       return;
     }
+    // Until the first save of a draft opened as a new symbol has made a file
+    // of its own, its draft is the old one's, which the list of drafts gives
+    // back, whatever became of that one's symbol or note.
+    const { drafts } = this.#options;
     const again =
-      this.#options.drafts?.target().kind === "file"
-        ? "open this symbol again"
-        : "start a new symbol in this note";
+      drafts?.recover !== undefined && this.#options.file?.() === undefined
+        ? "run Inkline: Recover drafts"
+        : drafts?.target().kind === "file"
+          ? "open this symbol again"
+          : "start a new symbol in this note";
     this.#host.showWaiting(
       `${savingWaits} ${
         this.keepDraft()
@@ -631,14 +637,14 @@ export class Keeping {
    * keeps its own base layer, so that it does not depend on which version the
    * file holds. A draft that stands in for one opened as a new symbol, as
    * below, names instead the base layer that one named and this editor could
-   * not show, until the first save starts writing.
+   * not show, until the first save has made a file of its own.
    */
   #draft(target: DraftTarget, pending: boolean): Draft {
     const { document, saved } = this.#session;
     // A draft opened as a new symbol is still for its old symbol until the
     // first save gives it a file of its own, as the editor then holds that
-    // file, or names another path: this one takes its place there, during a
-    // save too, as one cut short by Inkline's unloading keeps its draft. It
+    // file: this one takes its place there, during that save too, as one cut
+    // short by Inkline's unloading or a crash keeps its draft (#487). It
     // goes on naming a base layer it could not show, one taken from that
     // symbol's file or one that cannot be decoded, with that file's
     // fingerprints, so that restoring it on the file, should it open again,

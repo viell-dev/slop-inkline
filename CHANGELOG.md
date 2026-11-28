@@ -9,6 +9,19 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- A draft opened as a new symbol, from **Inkline: Recover drafts** or a symbol
+  whose file does not open, now stays the old symbol's until its first save has
+  made the new file, and that file's from then on. Its first save named the file
+  it was about to make before anything was there, so that if Obsidian stopped,
+  or Inkline was turned off, before that save was refused, as for a name typed
+  that another symbol came to as it was saved, the draft stayed kept for that
+  other symbol, which then offered it as its own when it opened. While such a
+  save waits for Obsidian, the editor now says to get the drawing back with
+  **Inkline: Recover drafts** after a restart
+  ([#487](https://github.com/viell-dev/slop-inkline/issues/487)).
+
 ## 1.1.1 - 2026-11-28
 
 This is the second pre-release of the 1.1 line, an alpha of 1.2.0, the next

@@ -10,6 +10,7 @@ import {
   DraftStore,
   drawingOf,
   fingerprintOf,
+  type CreatedFile,
   type Draft,
   type DraftTarget,
   type VaultStorage,
@@ -25,6 +26,7 @@ import {
   type SymbolFile,
   type SymbolUses,
 } from "../../../src/editor/keeping.ts";
+import { recoveredTarget } from "../../../src/editor/recovery.ts";
 import { DrawingSession } from "../../../src/editor/session.ts";
 import { StatusLine } from "../../../src/editor/status.ts";
 import { writeInkFile } from "../../../src/format/ink-file.ts";
@@ -276,15 +278,25 @@ interface Setup {
   /** The readings and translations its file holds with that drawing. */
   readonly text?: Partial<SymbolText>;
   readonly uses?: SymbolUses;
-  readonly drafts?: { readonly store: DraftStore };
+  readonly drafts?: {
+    readonly store: DraftStore;
+    /** The symbol its draft is for, which is otherwise its file. */
+    readonly target?: () => DraftTarget;
+    /** A draft to open with, as one opened as a new symbol. */
+    readonly recover?: Draft;
+  };
   readonly fields?: Fields;
   readonly decode?: InkCodec["drawableBase"];
+  /** The host's write, in place of one that writes over `disk` at once. */
+  readonly write?: (disk: SymbolOnDisk) => KeepingOptions["write"];
 }
 
 /** An editor's keeping, with a fake host that records what it is asked. */
 async function editor(setup: Setup = {}) {
   const said: string[] = [];
   const notices: string[] = [];
+  /** What the line that says a save waits for Obsidian showed, in turn. */
+  const waiting: string[] = [];
   const asked: Question[] = [];
   const open = new Set<Question>();
   const calls: string[] = [];
@@ -376,7 +388,9 @@ async function editor(setup: Setup = {}) {
       calls.push("showText");
     },
     showTextSummary: () => undefined,
-    showWaiting: () => undefined,
+    showWaiting: (text) => {
+      waiting.push(text);
+    },
     later: (then) => {
       calls.push("later");
       setTimeout(then, 0);
@@ -416,6 +430,7 @@ async function editor(setup: Setup = {}) {
       if (made) holds(await fingerprintOf(bytes));
       return true;
     },
+    ...(setup.write === undefined ? {} : { write: setup.write(disk) }),
     ...(uses === undefined ? {} : { uses: () => uses }),
     // A new symbol's file is made by its first save.
     file: () => (disk.bytes === undefined ? undefined : disk),
@@ -426,7 +441,12 @@ async function editor(setup: Setup = {}) {
       : {
           drafts: {
             store: setup.drafts.store,
-            target: (): DraftTarget => ({ kind: "file", path }),
+            target:
+              setup.drafts.target ??
+              ((): DraftTarget => ({ kind: "file", path })),
+            ...(setup.drafts.recover === undefined
+              ? {}
+              : { recover: setup.drafts.recover }),
           },
         }),
   };
@@ -465,6 +485,7 @@ async function editor(setup: Setup = {}) {
     disk,
     said,
     notices,
+    waiting,
     asked,
     open,
     calls,
@@ -1165,5 +1186,205 @@ describe("Keeping", () => {
     expect(editing.writes).toHaveLength(1);
     expect(editing.calls.filter((call) => call === "finish")).toHaveLength(1);
     expect(advance).not.toHaveBeenCalled();
+  });
+});
+
+/** The symbol a draft opened as a new symbol was kept for, whose file is gone. */
+const gateTarget: DraftTarget = { kind: "file", path: "Symbols/gate.ink.png" };
+
+/**
+ * A draft of gate.ink.png as an earlier load of Inkline kept it, with what it
+ * said of that file, for Recover drafts to open as a new symbol.
+ */
+function gateDraft(): Draft {
+  return {
+    id: "found",
+    target: gateTarget,
+    strokes: [stroke(10)],
+    base: { kind: "none" },
+    fingerprint: "gate's file",
+    drawing: "gate's drawing",
+    savedAt: Date.now(),
+    gridOrigin: 0,
+  };
+}
+
+/**
+ * The points of a first save that makes a file: it has claimed the path it is
+ * about to make, written the file there, and made it, which the editor then
+ * holds.
+ */
+type FirstSavePoint = "claimed" | "written" | "made";
+
+/**
+ * An editor opened on gate.ink.png's draft as a new symbol, as `recoverDraft`
+ * in symbols.ts opens it, with `recoveredTarget` for its draft. Its first save
+ * goes as that one's does: it claims `path`, the file it is about to make, and
+ * keeps the draft, then writes the file and makes it, holds it, and keeps the
+ * draft again. `refused` refuses it once it has claimed the path, as when
+ * another symbol came there, and the claim goes back. `stalls` says, at every
+ * save, that it waits for Obsidian. A later save writes over the file. `at`
+ * runs at each point, which a crash could stop it at.
+ */
+async function recovering(
+  store: DraftStore,
+  at: (point: FirstSavePoint) => void,
+  { refused = false, stalls = false } = {},
+) {
+  let claim: CreatedFile | undefined;
+  let made: string | undefined;
+  const found = gateDraft();
+  expect(store.put(found)).toBe(true);
+  // As the question that offered it held it.
+  store.hold(found.id);
+  const editing = await editor({
+    drafts: {
+      store,
+      target: () => recoveredTarget(found.target, made, claim),
+      recover: found,
+    },
+    write:
+      (disk) =>
+      async (bytes, _record, keepDraft, holds, _name, _check, wait) => {
+        if (stalls) wait.told(true);
+        if (made !== undefined) {
+          disk.bytes = bytes;
+          return true;
+        }
+        const fingerprint = await fingerprintOf(bytes);
+        const before = claim;
+        claim = { path, fingerprint };
+        keepDraft();
+        at("claimed");
+        if (refused) {
+          claim = before;
+          keepDraft();
+          throw new Error("the folder already has a symbol named one");
+        }
+        disk.bytes = bytes;
+        at("written");
+        made = path;
+        holds(fingerprint);
+        keepDraft();
+        at("made");
+        return true;
+      },
+  });
+  await editing.keeping.offerDraft();
+  return editing;
+}
+
+/**
+ * What a later load of Inkline offers of the drafts in `storage`, as after a
+ * crash now: by the fingerprint each says its file had, those that its editor
+ * of gate.ink.png offers, and those that its editor of the file at `path`,
+ * the one the first save makes, does.
+ */
+function laterLoad(storage: VaultStorage): {
+  gate: (string | null)[];
+  made: (string | null)[];
+} {
+  const store = new DraftStore(storage);
+  const prints = (target: DraftTarget): (string | null)[] =>
+    store.forTarget(target).map(({ fingerprint }) => fingerprint ?? null);
+  return { gate: prints(gateTarget), made: prints({ kind: "file", path }) };
+}
+
+/** A fingerprint of what the file at `path` holds. */
+async function heldPrint(disk: SymbolOnDisk): Promise<string> {
+  if (disk.bytes === undefined) throw new Error("no file");
+  return fingerprintOf(disk.bytes);
+}
+
+describe("Keeping a draft opened as a new symbol", () => {
+  it("keeps it for its old symbol, as found, until the first save has made a file, and then for that file", async () => {
+    const storage = new MemoryStorage();
+    const seen = new Map<FirstSavePoint, ReturnType<typeof laterLoad>>();
+    const editing = await recovering(new DraftStore(storage), (point) => {
+      seen.set(point, laterLoad(storage));
+    });
+    // The editor's own draft took the place of the one found.
+    expect(laterLoad(storage)).toEqual({ gate: ["gate's file"], made: [] });
+    editing.draw(30);
+    await editing.keeping.saveOnly();
+    expect(editing.said.at(-1)).toBe("Saved");
+    // A draft that named the path before the file was there would be offered
+    // as its own by whatever came there instead (#487).
+    expect(Object.fromEntries(seen)).toEqual({
+      claimed: { gate: ["gate's file"], made: [] },
+      written: { gate: ["gate's file"], made: [] },
+      made: { gate: [], made: [await heldPrint(editing.disk)] },
+    });
+    // Saved, nothing is left to keep.
+    expect(laterLoad(storage)).toEqual({ gate: [], made: [] });
+  });
+
+  it("keeps it for its old symbol through a first save refused at the path it claimed", async () => {
+    const storage = new MemoryStorage();
+    const seen = new Map<FirstSavePoint, ReturnType<typeof laterLoad>>();
+    const editing = await recovering(
+      new DraftStore(storage),
+      (point) => {
+        seen.set(point, laterLoad(storage));
+      },
+      { refused: true },
+    );
+    editing.draw(30);
+    await editing.keeping.saveOnly();
+    expect(editing.said.at(-1)).toBe(
+      "Not saved: the folder already has a symbol named one",
+    );
+    expect(Object.fromEntries(seen)).toEqual({
+      claimed: { gate: ["gate's file"], made: [] },
+    });
+    expect(laterLoad(storage)).toEqual({ gate: ["gate's file"], made: [] });
+  });
+
+  it.each([
+    ["is refused", true],
+    ["makes its file", false],
+  ])(
+    "keeps it for its old symbol as Inkline unloads during the first save, for a load meanwhile, and settles it as that save, which %s, ends",
+    async (_ends, refused) => {
+      const storage = new MemoryStorage();
+      let meanwhile: ReturnType<typeof laterLoad> | undefined;
+      const editing = await recovering(
+        new DraftStore(storage),
+        (point) => {
+          if (point !== "claimed") return;
+          // Turned off and on again, as an update does, so that the next load
+          // reads the draft while this save still runs.
+          expect(editing.keeping.retire()).toBe(true);
+          meanwhile = laterLoad(storage);
+        },
+        { refused },
+      );
+      editing.draw(30);
+      await editing.keeping.saveOnly();
+      expect(meanwhile).toEqual({ gate: ["gate's file"], made: [] });
+      expect(laterLoad(storage)).toEqual(
+        refused
+          ? { gate: ["gate's file"], made: [] }
+          : { gate: [], made: [await heldPrint(editing.disk)] },
+      );
+    },
+  );
+
+  it("says to recover it from the list of drafts while the first save waits for Obsidian, and to open the symbol once it has its file", async () => {
+    const editing = await recovering(
+      new DraftStore(new MemoryStorage()),
+      () => undefined,
+      { stalls: true },
+    );
+    editing.draw(30);
+    await editing.keeping.saveOnly();
+    expect(editing.waiting.at(-1)).toContain(
+      "Your strokes are safe in a draft, so if nothing changes, restart Obsidian and run Inkline: Recover drafts.",
+    );
+    editing.draw(50);
+    await editing.keeping.saveOnly();
+    expect(editing.waiting.at(-1)).toContain(
+      "restart Obsidian and open this symbol again.",
+    );
   });
 });

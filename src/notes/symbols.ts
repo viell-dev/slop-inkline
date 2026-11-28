@@ -46,6 +46,7 @@ import {
   listedSearchTexts,
   listedPlace,
   recoveredName,
+  recoveredTarget,
   recoveryQuestion,
   type AsNewSymbol,
   type FileState,
@@ -1072,15 +1073,18 @@ function claimed(claim: Claim): CreatedFile {
  *   would go, as {@link newSymbolPath} finds it for the note's path, there
  *   or gone.
  *
- * Until then the editor's draft is for the symbol the old draft was kept for,
- * so that a crash leaves it where it was found, and the editor keeps it in
- * that draft's place. The first save's draft names the file it is making
- * before it writes, as a new symbol's does, so that a save cut short leaves a
- * draft for that file, which offers it when it opens, or lists it when it does
- * not; a retry writes over that file if it holds what this wrote, rather than
- * make another. A save that fails having left nothing of its own there, as
- * one refused because another symbol came to the path, puts the draft back
- * where it was.
+ * Until the first save has made the new symbol's file, the editor's draft is
+ * for the symbol the old draft was kept for, so that a crash, during that save
+ * too, leaves it where it was found, and the editor keeps it in that draft's
+ * place; from then on it is that file's, kept for it at once (#487). The draft
+ * of a new symbol's draft names the file its first save is making before it
+ * writes, and what it writes, as a new symbol's does, so that restoring it
+ * after a save cut short finishes that save with that file, while it holds
+ * that; a symbol's draft names no such file, as {@link recoveredTarget} says.
+ * In the editor, a retry writes over a file that its first save left, if it
+ * holds what this wrote, rather than make another. A save that fails having
+ * left nothing of its own there, as one refused because another symbol came
+ * to the path, forgets that path.
  *
  * The first save's file of a new symbol's draft is claimed only once the
  * draft is restored, as a new symbol's `restored` does, so that an editor
@@ -1135,15 +1139,8 @@ function recoverDraft(host: EditorHost, found: AsNewSymbol): void {
     drafts: {
       store: host.drafts,
       // Once made, the symbol is its file, which follows renames.
-      target: () => {
-        if (made !== undefined) return { kind: "file", path: made.path };
-        if (target.kind === "file") {
-          return { kind: "file", path: claim?.path ?? path };
-        }
-        return claim === undefined
-          ? { kind: "new", note: target.note }
-          : { kind: "new", note: target.note, file: claimed(claim) };
-      },
+      target: () =>
+        recoveredTarget(target, made?.path, claim && claimed(claim)),
       recover: name === undefined ? draft : { ...draft, name },
       // As a new symbol's: the file found by its path follows renames.
       restored: () => {
@@ -1191,6 +1188,8 @@ function recoverDraft(host: EditorHost, found: AsNewSymbol): void {
           choice,
           (at, left) => {
             // As a new symbol's first save keeps what a write cut short left.
+            // The draft of a new symbol's draft names it at once; a symbol's
+            // stays its old symbol's until the file is made.
             claim =
               left === undefined
                 ? { path: at, fingerprint }
@@ -1202,10 +1201,12 @@ function recoverDraft(host: EditorHost, found: AsNewSymbol): void {
         );
       } catch (error) {
         // A save that left nothing of its own at the path it claimed, as one
-        // refused because another symbol came there, gives the draft back its
-        // place, or it stays kept for that symbol, which would offer it as its
-        // own (#437). A part it left is in the claim, for the next save, and so
-        // is the whole file its copy made, which Obsidian has not listed.
+        // refused because another symbol came there, forgets that path, which
+        // the next save would otherwise look at first, and a new symbol's
+        // draft name, and goes back to the file a new symbol's draft's first
+        // save made, if any (#437). A part it left is in the claim, for the
+        // next save, and so is the whole file its copy made, which Obsidian
+        // has not listed.
         if (
           claim !== before &&
           claim?.previous === undefined &&
@@ -1217,6 +1218,10 @@ function recoverDraft(host: EditorHost, found: AsNewSymbol): void {
         throw error;
       }
       holds(fingerprint);
+      // The draft is the file's from now on, which holds what this wrote, so
+      // that a crash before the save ends leaves it there rather than on the
+      // old symbol, which would make this symbol a second time.
+      keepDraft();
       await host.texts.refresh(made);
       return true;
     },

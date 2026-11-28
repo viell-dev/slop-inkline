@@ -19,8 +19,10 @@ import {
   delayVault,
   draw,
   editorOpen,
+  hold,
   holdDecoding,
   letDecodingGo,
+  letGo,
   openAtMarker,
   recordOf,
   startOver,
@@ -29,6 +31,7 @@ import {
   topButton,
   undoStubs,
   waitForEditor,
+  waitForHeld,
   waitForHeldDecoding,
   waitForNotice,
   waitForStatus,
@@ -364,10 +367,11 @@ describe("Draft recovery", function () {
     expect(await draftCount()).toBe(0);
   });
 
-  it("keeps a draft it opened as a new symbol on the part its first save's copy left, for the next save to write whole", async function () {
-    // #425's part, which the save cannot take away: the draft stays for that
-    // file, whose next save writes it whole, where the name would otherwise
-    // be refused by the save's own part.
+  it("keeps a draft it opened as a new symbol for its own file through a first save cut short, and writes whole the part that save's copy left", async function () {
+    // #425's part, which the save cannot take away: the next save writes it
+    // whole, where the name would otherwise be refused by the save's own
+    // part. The draft stays the old symbol's until then, as that part holds
+    // only the start of what the save wrote (#487).
     await gateAsNew();
     await nameSymbol("tower");
     await cutCopyAt("tower.ink.png", 64, { stays: true });
@@ -377,7 +381,7 @@ describe("Draft recovery", function () {
     );
     expect(await draftKeptFor()).toEqual({
       kind: "file",
-      path: "tower.ink.png",
+      path: "gate.ink.png",
     });
     await waitForListed("tower.ink.png");
     await browser.keys(["Control", "Enter"]);
@@ -425,8 +429,9 @@ describe("Draft recovery", function () {
     expect(await draftCount()).toBe(0);
   });
 
-  it("keeps a draft it opened as a new symbol on the file its first save wrote whole, when Obsidian did not list it", async function () {
-    // The copy made the file, and the vault did not have it at once.
+  it("keeps a draft it opened as a new symbol for its own file when Obsidian did not list the file its first save wrote whole, and takes that file at the next save", async function () {
+    // The copy made the file, and the vault did not have it at once. The
+    // draft names the file only once the editor holds it (#487).
     await gateAsNew();
     await nameSymbol("tower");
     await browser.executeObsidian(({ app }) => {
@@ -458,12 +463,105 @@ describe("Draft recovery", function () {
     );
     expect(await draftKeptFor()).toEqual({
       kind: "file",
-      path: "tower.ink.png",
+      path: "gate.ink.png",
     });
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
     expect(await symbolFiles()).toEqual(["gate.ink.png", "tower.ink.png"]);
     expect(await strokeCount("tower.ink.png")).toBe(2);
+    expect(await draftCount()).toBe(0);
+  });
+
+  it("keeps a draft it opened as a new symbol for its own file while its first save makes the file, so that no symbol that comes there offers it", async function () {
+    // #487: the first save named the path it was about to make in the draft
+    // before anything was there, so that a crash, or Inkline turned off and
+    // on again, before the save was refused left the draft for the symbol
+    // that came there, which offered it as its own.
+    await gateAsNew();
+    await nameSymbol("tower");
+    await hold("create", "tower.ink.png");
+    await browser.keys(["Control", "s"]);
+    // The save has claimed tower.ink.png, and is about to make it, when
+    // another symbol comes there, as through a sync tool.
+    await waitForHeld();
+    await createSymbol("tower.ink.png");
+    // As a crash now would leave it.
+    expect(await draftKeptFor()).toEqual({
+      kind: "file",
+      path: "gate.ink.png",
+    });
+    const tower = await bytesOfFile("tower.ink.png");
+    // Turned off and on again while the save waits, as an update does: the
+    // next load's editor of tower.ink.png offers nothing.
+    await obsidianPage.disablePlugin("inkline");
+    await restart();
+    await editFile("tower.ink.png");
+    await browser.pause(500);
+    expect(await topButton("Restore")).toBeUndefined();
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    // The save goes on, finds the path taken, and is refused.
+    await letGo();
+    await waitForNotice(
+      "Could not save the symbol: the vault's top folder already has a symbol named tower",
+    );
+    await browser.pause(500);
+    expect(await draftKeptFor()).toEqual({
+      kind: "file",
+      path: "gate.ink.png",
+    });
+    expect(await bytesOfFile("tower.ink.png")).toEqual(tower);
+    // It opens again as a new symbol, and another name saves it.
+    await tryToEdit("gate.ink.png");
+    await clickTop("Open as new symbol");
+    await waitForEditor();
+    await nameSymbol("door");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual([
+      "door.ink.png",
+      "gate.ink.png",
+      "tower.ink.png",
+    ]);
+    expect(await strokeCount("door.ink.png")).toBe(2);
+    expect(await bytesOfFile("tower.ink.png")).toEqual(tower);
+    expect(await draftCount()).toBe(0);
+  });
+
+  it("keeps a draft it opened as a new symbol for the file its first save made as soon as it is made, with what that save wrote", async function () {
+    // What reads the new file once it is made, as the index of the symbols'
+    // text does, waits, and with it the save, which keeps the draft for the
+    // file before that read: a crash then leaves it for that file, rather
+    // than for gate.ink.png, which would make the symbol a second time.
+    await gateAsNew();
+    await nameSymbol("tower");
+    await hold("readSymbol", "tower.ink.png");
+    await browser.keys(["Control", "s"]);
+    await browser.waitUntil(
+      async () => (await symbolFiles()).includes("tower.ink.png"),
+      { timeoutMsg: "the save never made tower.ink.png" },
+    );
+    const made = await browser.executeObsidian(async ({ app }) => {
+      const { drafts } = window.inklineTest;
+      // Past the hold, which is on the vault's reads.
+      const bytes = await app.vault.adapter.readBinary("tower.ink.png");
+      return drafts.fingerprintOf(new Uint8Array(bytes));
+    });
+    await browser.waitUntil(
+      async () => {
+        const target = await draftKeptFor();
+        const [prints] = await storedPrints();
+        return (
+          JSON.stringify(target) ===
+            JSON.stringify({ kind: "file", path: "tower.ink.png" }) &&
+          prints?.fingerprint === made
+        );
+      },
+      { timeoutMsg: "the draft was never kept for the file made" },
+    );
+    await letGo();
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["gate.ink.png", "tower.ink.png"]);
     expect(await draftCount()).toBe(0);
   });
 
