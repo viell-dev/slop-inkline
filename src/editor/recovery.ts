@@ -159,6 +159,20 @@ export function listedName({ draft, path }: Listed): string {
   return name === undefined || name.trim() === "" ? "New symbol" : name;
 }
 
+/**
+ * What the list of drafts finds a draft by, as a search goes: the name it
+ * shows, the path of the file or note it was kept for, and the file its first
+ * save made, if any.
+ */
+export function listedSearchTexts(listed: Listed): string[] {
+  const made = createdFile(listed.draft);
+  return [
+    listedName(listed),
+    listed.path,
+    ...(made === undefined ? [] : [made.path]),
+  ];
+}
+
 /** Where the list of drafts says a draft's symbol was. */
 export function listedPlace({ draft, path }: Listed): string {
   return draft.target.kind === "new" ? `Started in ${path}` : folderOf(path);
