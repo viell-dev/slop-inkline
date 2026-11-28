@@ -9,6 +9,16 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Added
+
+- **Zoom** shows a scroll bar below the drawing area whenever the drawing
+  reaches past the view, so that you can see where the view is in a wide symbol
+  and that there is more of it to either side. Drag its thumb to move along the
+  drawing, or press its track to bring the thumb there. Its row stays for as
+  long as Zoom is on, so that the bar coming or going never moves the drawing
+  under the pointer
+  ([#477](https://github.com/viell-dev/slop-inkline/issues/477)).
+
 ### Changed
 
 - **Inkline: Recover drafts** now lists every unsaved drawing kept as a draft,

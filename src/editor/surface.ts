@@ -3,8 +3,9 @@
 // the symbol at its size. It holds the view, draws it in one frame however
 // often asked, measures the note's font for the guides and lays the grid out
 // on them, follows the window's and the editor's size, and magnifies and fits
-// the view, waiting while the pointer is pressed. It routes the pointer, the
-// wheel, and drops to drawing or to the picture to trace over.
+// the view, waiting while the pointer is pressed, with a scroll bar along a
+// magnified one. It routes the pointer, the wheel, and drops to drawing or to
+// the picture to trace over.
 
 import { unitsPerPixel } from "../format/record.ts";
 import { documentSpan, type InkDocument } from "../ink/document.ts";
@@ -28,6 +29,7 @@ import {
 import { dragsPicture, type PictureTracing } from "./picture.ts";
 import { PointerGate } from "./pointer.ts";
 import { wheelFactor } from "./reference.ts";
+import { EditorScrollBar } from "./scroll.ts";
 import type { DrawingSession, InputPoint } from "./session.ts";
 import type { StatusLine } from "./status.ts";
 import { InkView, measureFont } from "./view.ts";
@@ -134,6 +136,7 @@ export class EditorSurface {
   readonly #view: InkView;
   readonly #gate = new PointerGate();
   readonly #cursor: HTMLCanvasElement;
+  readonly #scroll: EditorScrollBar;
   #cursorSize:
     | { diameter: number; ratio: number; brush: BrushCursor | undefined }
     | undefined;
@@ -189,9 +192,11 @@ export class EditorSurface {
       text: "Drawing area",
       attr: { id: options.labelId, hidden: "" },
     });
+    const surfaceId = `${options.labelId}-surface`;
     const canvas = drawing.createEl("canvas", {
       cls: "inkline-surface",
       attr: {
+        id: surfaceId,
         tabindex: "0",
         role: "img",
         // Obsidian turns aria-label into a tooltip. A separate label keeps
@@ -204,6 +209,22 @@ export class EditorSurface {
       attr: { "aria-hidden": "true" },
     });
     this.#cursor.hide();
+    this.#scroll = new EditorScrollBar(drawing, surfaceId, {
+      visible: () => this.#view.visible,
+      moveTo: (center) => {
+        options.line.act(() => {
+          this.#moveAlong(center - this.#view.center);
+        });
+      },
+    });
+    // The wheel moves along the drawing over the bar too, as over the area.
+    this.#scroll.element.addEventListener(
+      "wheel",
+      (event) => {
+        if (this.#view.magnified) this.#wheelAlong(event);
+      },
+      { passive: false },
+    );
     canvas.win.addEventListener("resize", this.#resizeCursor);
     // Before the editor's shortcuts, which can stop a key's event.
     canvas.win.addEventListener("keydown", this.#shiftKey, true);
@@ -229,6 +250,7 @@ export class EditorSurface {
     this.#unwatchCss = options.host.watchCss(this.#remeasure);
     this.#view.centerOn(options.center);
     this.#view.magnified = options.magnified;
+    this.#scroll.zoomed(options.magnified);
     this.#listen(canvas);
   }
 
@@ -415,17 +437,7 @@ export class EditorSurface {
         // Magnified, and not moving the picture, the wheel moves along the
         // drawing.
         if (!moving && view.magnified) {
-          event.preventDefault();
-          const delta = event.deltaX === 0 ? event.deltaY : event.deltaX;
-          const lines = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
-          const { left, right } = view.visible;
-          line.act(() => {
-            view.pan(
-              ((delta * lines) / view.contentBox().width) * (right - left),
-            );
-            this.#followPointer();
-            this.render();
-          });
+          this.#wheelAlong(event);
           return;
         }
         if (!moving || picture.picture === undefined) return;
@@ -548,21 +560,49 @@ export class EditorSurface {
     if (direction === undefined || !view.magnified) return false;
     if (keepsArrows(activeDocument.activeElement)) return false;
     const { left, right } = view.visible;
-    view.pan((direction * (right - left)) / 4);
-    this.#followPointer();
-    this.render();
+    this.#moveAlong((direction * (right - left)) / 4);
     return true;
   }
 
   /**
-   * After the view moves along the drawing, as the wheel and the left and
-   * right arrow keys move a magnified one, carries what is being drawn on to
-   * where the pointer pressed to draw now is in the drawing, as a move there
-   * would: the drawing moved under it, like paper under a pen, and what is
-   * drawn stays under the pointer and shows what letting go saves (#393).
-   * Moving along while drawing can be meant, to take a long stroke past the
-   * edge of the view. A polygon's corner, or a path's point or handle, being
-   * pressed goes on to the pointer in the same way. The caller draws again.
+   * Moves the view `dx` document pixels along the drawing, as the wheel, the
+   * left and right arrow keys, and the scroll bar move a magnified one, with
+   * what is being drawn going on to the pointer ({@link #followPointer}).
+   */
+  #moveAlong(dx: number): void {
+    this.#view.pan(dx);
+    this.#followPointer();
+    this.render();
+  }
+
+  /**
+   * Moves a magnified view along the drawing as far as the wheel's `event`
+   * turns, its way across, or else its way down, in proportion to the
+   * surface's width.
+   */
+  #wheelAlong(event: WheelEvent): void {
+    const view = this.#view;
+    event.preventDefault();
+    const delta = event.deltaX === 0 ? event.deltaY : event.deltaX;
+    const lines = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
+    const { left, right } = view.visible;
+    this.#options.line.act(() => {
+      this.#moveAlong(
+        ((delta * lines) / view.contentBox().width) * (right - left),
+      );
+    });
+  }
+
+  /**
+   * After the view moves along the drawing, as the wheel, the left and right
+   * arrow keys, and the scroll bar move a magnified one, carries what is
+   * being drawn on to where the pointer pressed to draw now is in the
+   * drawing, as a move there would: the drawing moved under it, like paper
+   * under a pen, and what is drawn stays under the pointer and shows what
+   * letting go saves (#393). Moving along while drawing can be meant, to take
+   * a long stroke past the edge of the view. A polygon's corner, or a path's
+   * point or handle, being pressed goes on to the pointer in the same way.
+   * The caller draws again.
    */
   #followPointer(): void {
     const at = this.#pressedAt;
@@ -680,6 +720,8 @@ export class EditorSurface {
     const view = this.#view;
     const { host } = this.#options;
     view.magnified = !view.magnified;
+    // Its row first, as fitting the drawing area to the window counts it.
+    this.#scroll.zoomed(view.magnified);
     this.#layOutGrid(this.#chosenLines());
     this.resizeView();
     host.updateControls();
@@ -717,6 +759,7 @@ export class EditorSurface {
         activeStrokes,
         tool === "eraser" && shape !== "free",
       );
+      this.#scroll.show(view.magnified, view.inkedImage, view.visible);
       this.#updateCursor();
       view.drawPreview(
         this.#preview,

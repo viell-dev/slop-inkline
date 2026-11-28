@@ -267,6 +267,8 @@ export class InkView {
   #inked: InkMeasure | undefined;
   /** Where the saved image would start and end, as of the last render. */
   #image: Span = cropSpan(undefined);
+  /** Whether there was ink to save, as of the last render. */
+  #inkedImage = false;
 
   constructor(canvas: HTMLCanvasElement, across = visibleWidth) {
     this.canvas = canvas;
@@ -451,6 +453,14 @@ export class InkView {
   }
 
   /**
+   * Where the saved image would start and end, as {@link image} says, or
+   * undefined while there is no ink to save, as of the last render.
+   */
+  get inkedImage(): Span | undefined {
+    return this.#inkedImage ? this.#image : undefined;
+  }
+
+  /**
    * Draws any picture to trace over, the line box, and the document, with
    * `active`, the strokes being drawn, on top: erasing them cuts the ink
    * below as it will when committed, never the picture. With `erasing`, for
@@ -493,12 +503,12 @@ export class InkView {
       committed.resetTransform();
       this.#shown = now;
     }
-    this.#image = cropSpan(
-      joinSpans(
-        this.#inked?.ink,
-        documentSpan({ strokes: active.filter(({ tool }) => tool === "pen") }),
-      ),
+    const ink = joinSpans(
+      this.#inked?.ink,
+      documentSpan({ strokes: active.filter(({ tool }) => tool === "pen") }),
     );
+    this.#image = cropSpan(ink);
+    this.#inkedImage = ink !== undefined;
     const work = offscreen2d(this.#work);
     work.resetTransform();
     work.globalCompositeOperation = "copy";

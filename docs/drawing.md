@@ -312,6 +312,16 @@ polygon's corner or a path's point or handle being pressed then goes where you
 let go, as ever. **Unreleased:** opening or closing **Readings and
 translations** while you draw counts as a change to the editor's size.
 
+**Unreleased:** while zoomed, a scroll bar below the drawing area shows where
+the view is whenever the drawing reaches past it, or the view has moved off the
+drawing: its thumb is the part in view. Drag the thumb to move along the
+drawing, or press the track beside it to bring the thumb there; the wheel over
+the bar moves along too. It goes as far as the symbol's edges and half an em
+past them, as Fit leaves; the wheel and the arrow keys can move further. Its row
+below the drawing area is kept for as long as Zoom is on, so that the bar coming
+or going while you draw never moves the drawing. The bar is for the pointer: the
+left and right arrow keys do the same from the keyboard.
+
 The grid, though, has twice as many cells each way while zoomed, so the default
 5 cells across the x-height become 10, for placing fine detail. Every point of
 the usual grid stays a point of the finer one, so a drawing started in either

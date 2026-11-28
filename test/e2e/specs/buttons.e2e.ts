@@ -65,7 +65,7 @@ const usual: Readonly<Record<string, string>> = {
     "Flat ends: with the grid on, ends of freehand strokes and paths that Shift puts on a row, coming in at 45° or steeper, stop flush with it, rather than rounding past it (T)",
   copy: "Copy from: start from a copy of another symbol (V)",
   fit: "Fit: centre the drawing in the view, and out of Zoom show all of it if it is wider; the drawing itself stays as it is (F)",
-  zoom: "Zoom: a taller view of the drawing, twice as large, with twice as many grid cells each way; the wheel or the left and right arrow keys move along it (Z)",
+  zoom: "Zoom: a taller view of the drawing, twice as large, with twice as many grid cells each way; the wheel, the left and right arrow keys, or its scroll bar move along it (Z)",
   save: "Save (Mod+Enter)",
   next: "Next: save and draw the next one (Mod+Shift+Enter)",
   help: "Help",
