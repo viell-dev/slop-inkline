@@ -355,7 +355,9 @@ export class EditorSurface {
       }
       this.#pressedAt = undefined;
       const placingPath = session.pathState === "placing";
-      if (event.type === "pointercancel") session.cancel();
+      // A cancelled press loses only what it did, never a shape it was
+      // placing or adjusting.
+      if (event.type === "pointercancel") session.cancelPress();
       // A release, unlike a lost capture, says where the pointer ended.
       else if (event.type === "lostpointercapture") session.end();
       else session.end(point(event), event.shiftKey);

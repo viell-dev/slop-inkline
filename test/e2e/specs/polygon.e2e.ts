@@ -3,6 +3,7 @@ import type { PolygonStroke, Stroke } from "../../../src/format/record.ts";
 import { loadModules } from "../support/browser.ts";
 import { pressed, save } from "../support/editing.ts";
 import {
+  clickTop,
   openAtMarker,
   recordOf,
   settledSurface,
@@ -152,10 +153,17 @@ describe("Polygon", function () {
   it("closes a rectangle on its first corner, with sharp corners in the saved image", async function () {
     await openPolygon(true);
     await shiftClick([0.35, 0.3], [0.65, 0.3], [0.65, 0.7], [0.35, 0.7]);
-    // Nothing is committed until the shape is closed or ended.
-    expect((await storedDrafts())[0]?.strokes ?? []).toEqual([]);
+    // Nothing is committed until the shape is closed or ended, but the draft
+    // keeps it as the ink it would be: open, with its four corners (#489).
+    const [placing] = await draftStrokes(1);
+    expect(placing?.kind).toBe("polygon");
+    expect(placing?.points).toHaveLength(8);
     await shiftClick([0.35, 0.3]);
     await saveScreenshot("polygon", browser.$(".inkline-editor"));
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes[0]?.points.length === 10,
+      { timeoutMsg: "the draft never held the rectangle closed" },
+    );
     const [rectangle] = await draftStrokes(1);
     expect(rectangle?.kind).toBe("polygon");
     const points = rectangle?.points ?? [];
@@ -176,7 +184,7 @@ describe("Polygon", function () {
     expect(ink.redrawn).toBe(0);
   });
 
-  it("takes back corners with Undo, ends open with Enter, and drops a shape with Esc", async function () {
+  it("takes back corners with Undo, ends open with Enter, and drops a shape with Esc, which Undo takes back, but not with the close button", async function () {
     await openPolygon(false);
     const undo = browser.$('[data-inkline-button="undo"]');
     expect(await undo.isEnabled()).toBe(false);
@@ -199,9 +207,21 @@ describe("Polygon", function () {
     expect(dx).toBeLessThan(bx);
     expect(dy).toBeGreaterThan(ay);
     await clickSurfacePoints([0.6, 0.3], [0.7, 0.5]);
+    const [, placing] = await draftStrokes(2);
+    await browser.keys("Escape");
+    await waitForStatus("Polygon dropped: Undo brings it back");
+    expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
+    expect(await draftStrokes(1)).toHaveLength(1);
+    // Undo brings it back, kept in the draft again; the close button leaves
+    // it, and asks; and Esc drops it again (#489).
+    await undo.click();
+    expect((await draftStrokes(2))[1]).toEqual(placing);
+    await browser.$(".inkline-editor .modal-header-button").click();
+    await clickTop("Keep drawing");
+    await waitForStatus("Polygon kept: Enter ends it, and Esc drops it");
+    expect((await draftStrokes(2))[1]).toEqual(placing);
     await browser.keys("Escape");
     await waitForStatus("Polygon dropped");
-    expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
     expect(await draftStrokes(1)).toHaveLength(1);
     // Clear, from its key, drops a shape being placed with the drawing.
     await clickSurfacePoints([0.6, 0.3], [0.7, 0.5]);

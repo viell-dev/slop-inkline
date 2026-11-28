@@ -24,6 +24,13 @@ a click outside it, asks **Save this symbol?**:
 
 A changed name is a change, and so is ink that Make ink is previewing.
 
+**Unreleased:** so is a polygon or a path still being placed, or a path waiting
+for **Finish path**. The close button and a click outside leave it as it is and
+ask, saying that saving makes it ink as it is; **Keep drawing** goes back to it,
+and the status line says how to finish it or drop it. Esc drops it instead, and
+Undo brings it back. In Inkline 1.0.2, Esc, the close button, and a click
+outside all drop a polygon being placed, which Undo does not bring back.
+
 For a symbol your notes use more than once, whose drawing changed, closing asks
 **Save the changes to** the symbol instead, with **Replace**, **Discard**, and
 **Keep drawing**, as [the next section](#changing-a-symbol-used-elsewhere)
@@ -53,14 +60,19 @@ index: a note or canvas that Obsidian has not indexed yet is missing from it.
 
 After each finished stroke, undo, redo, or clearing, and each change of name,
 the editor keeps a draft of the drawing in the vault's local storage, which
-Obsidian keeps on your computer for that vault. Closing Obsidian or a crash then
-loses at most a stroke still being drawn, or a polygon or, **Unreleased**, a
-path still being placed or waiting for **Finish path**, with every change made
-to it since it began, and turning Inkline off loses nothing: it ends what is
-being drawn and keeps the draft. If Obsidian is still renaming the symbol you
-saved as you turn Inkline off, as while it asks about links, the draft follows
-the rename once Obsidian finishes it, with its own copy of any picture you drew
-over, and the time it was kept. A picture you were tracing over is not kept.
+Obsidian keeps on your computer for that vault. **Unreleased:** a polygon or a
+path still being placed, or a path waiting for **Finish path**, is in the draft
+too, as the ink that saving would make of it, kept again each time it changes:
+as a corner or a point is placed, a point or a handle's end is let go, or Undo
+takes a step back. Closing Obsidian or a crash then loses at most a stroke still
+being drawn, or the drag of a point or a handle's end still held, and restoring
+the draft brings such a shape back as ink, as it was. In Inkline 1.0.2, they
+also lose a polygon still being placed, with every corner placed since it began.
+Turning Inkline off loses nothing: it ends what is being drawn and keeps the
+draft. If Obsidian is still renaming the symbol you saved as you turn Inkline
+off, as while it asks about links, the draft follows the rename once Obsidian
+finishes it, with its own copy of any picture you drew over, and the time it was
+kept. A picture you were tracing over is not kept.
 
 Opening the same symbol again, or a new symbol in the same note, asks **Restore
 the unsaved drawing?**, with the time the draft was kept:

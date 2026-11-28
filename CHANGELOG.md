@@ -28,6 +28,18 @@ even one a public release; earlier pre-releases carry a suffix such as
   Screen readers also name the bar now, for the drawing area, where they read
   only that it was a scroll bar
   ([#490](https://github.com/viell-dev/slop-inkline/issues/490)).
+- A path waiting for **Finish path**, or still being placed, and a polygon still
+  being placed, were in no draft, so closing Obsidian or a crash lost them with
+  every adjustment, and the close button or a click outside the editor dropped
+  them for good. Now the draft keeps such a shape as the ink it would become,
+  kept again as each point or corner is placed, each drag is let go, and each
+  Undo, and restoring the draft brings it back as ink. The close button and a
+  click outside leave it as it is and ask whether to save, as for any unsaved
+  change: **Save** makes it ink, and **Keep drawing** goes back to it, with the
+  status line saying how to finish or drop it. Esc still drops it, and Undo now
+  brings it back, until anything else is drawn or changed. A cancelled press,
+  which a mouse does not normally send, takes back only what that press did
+  ([#489](https://github.com/viell-dev/slop-inkline/issues/489)).
 
 ## 1.1.1 - 2026-11-28
 

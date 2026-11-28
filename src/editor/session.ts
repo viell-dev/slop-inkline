@@ -468,9 +468,16 @@ export class DrawingSession {
    * clicks on it.
    */
   #snaps: boolean[] = [];
+  /**
+   * The polygon or path that {@link drop} dropped, with its corners' snaps,
+   * for {@link undo} to bring back, until anything else is drawn, the
+   * drawing or its history changes, or another shape is chosen.
+   */
+  #dropped:
+    | { readonly active: ActiveStroke; readonly snaps: readonly boolean[] }
+    | undefined;
   tool: Tool = "pen";
-  /** What dragging draws, with the pen or the eraser. */
-  shape: Shape = "free";
+  #shape: Shape = "free";
   /**
    * Whether an ellipse, or a polygon closed on its first corner, is drawn
    * filled, as it is drawn and placed: its line at the brush's width, as
@@ -479,6 +486,20 @@ export class DrawingSession {
   fill = false;
   /** Each tool keeps its own selected size for the life of the session. */
   readonly sizes: Record<Tool, number> = { pen: 1, eraser: 1 };
+
+  /** What dragging draws, with the pen or the eraser. */
+  get shape(): Shape {
+    return this.#shape;
+  }
+
+  /**
+   * Chooses what dragging draws. Another shape forgets one that {@link drop}
+   * dropped, as {@link undo} would otherwise bring back a shape not chosen.
+   */
+  set shape(shape: Shape) {
+    if (shape !== this.#shape) this.#dropped = undefined;
+    this.#shape = shape;
+  }
 
   get sizeIndex(): number {
     return this.sizes[this.tool];
@@ -620,7 +641,10 @@ export class DrawingSession {
   }
 
   get canUndo(): boolean {
-    return this.#active === undefined && this.#history.canUndo;
+    return (
+      this.#active === undefined &&
+      (this.#dropped !== undefined || this.#history.canUndo)
+    );
   }
 
   get canRedo(): boolean {
@@ -681,6 +705,30 @@ export class DrawingSession {
   /** The captured brush diameter, without copying the active stroke's points. */
   get activeSize(): number | undefined {
     return this.#active?.size;
+  }
+
+  /**
+   * A polygon or a path being placed, or a path waiting to be made ink, as
+   * the ink it would be now: just what {@link end} commits without a release,
+   * as when saving, with the points it has, open, or closed if it closed. So
+   * a draft keeps it as a finished stroke is kept. None while there is none,
+   * and for a stroke being dragged, which the pointer has yet to finish.
+   */
+  get placedStrokes(): readonly Stroke[] {
+    const active = this.#active;
+    return active === undefined ? [] : this.#placedInk(active);
+  }
+
+  /**
+   * What `active` commits when it ends without a release, if it is a polygon
+   * or a path being placed: the corners or points it has, open, or closed for
+   * a path that closed. None for anything else.
+   */
+  #placedInk(active: ActiveStroke): Stroke[] {
+    if (active.polygon) return this.#strokes(active, uncut, false);
+    const { path } = active;
+    if (path === undefined) return [];
+    return this.#pathStrokes(active, path.nodes, path.state === "closed");
   }
 
   /**
@@ -954,6 +1002,9 @@ export class DrawingSession {
       this.#shift = shift;
       return placing.path.press(this.#pathPointer(point), this.#reach(placing));
     }
+    // Something else is drawn now, which a shape that Esc dropped would not
+    // come back over.
+    this.#dropped = undefined;
     if (this.shape === "path") {
       this.#beginPath(point, shift);
       return true;
@@ -1183,7 +1234,7 @@ export class DrawingSession {
       this.#shift ||= now;
       const remembered = this.#shift && !now && this.snap;
       if (release === undefined) {
-        this.#commit(this.#strokes(placed, uncut, false));
+        this.#commit(this.#placedInk(placed));
       } else {
         this.#place(placed, remembered ? (this.#next ?? release) : release);
       }
@@ -1192,9 +1243,7 @@ export class DrawingSession {
     const path = placed?.path;
     if (placed !== undefined && path !== undefined) {
       if (release === undefined) {
-        this.#commit(
-          this.#pathStrokes(placed, path.nodes, path.state === "closed"),
-        );
+        this.#commit(this.#placedInk(placed));
         return;
       }
       const now = shift ?? false;
@@ -1345,6 +1394,41 @@ export class DrawingSession {
     return true;
   }
 
+  /**
+   * Drops a polygon or a path being placed, or a path waiting to be made ink,
+   * as Esc does, keeping it for {@link undo} to bring back as it was, until
+   * anything else is drawn or changed. A press being held on a path is let go
+   * as it shows first, as Enter lets go of one. Returns whether there was one.
+   */
+  drop(): boolean {
+    const active = this.#active;
+    if (active === undefined || !this.placing) return false;
+    active.path?.letGoAsShown();
+    const snaps = this.#snaps;
+    this.cancel();
+    this.#dropped = { active, snaps };
+    return true;
+  }
+
+  /**
+   * Takes back what the press being held did, as when the pointer is
+   * cancelled: a stroke being dragged goes, but a polygon or a path being
+   * placed keeps everything placed and adjusted before the press, and loses
+   * only a point it placed or what it moved, as Undo would take back, so that
+   * nothing goes that the person did not ask to drop. A polygon's first press
+   * is all of it, and so is a path's.
+   */
+  cancelPress(): void {
+    const active = this.#active;
+    const path = active?.path;
+    if (path !== undefined) {
+      if (path.held && !path.undo()) this.cancel();
+      return;
+    }
+    if (active?.polygon === true && !this.#starting) return;
+    this.cancel();
+  }
+
   /** Drops the stroke being drawn, as when the pointer is cancelled. */
   cancel(): void {
     this.#active = undefined;
@@ -1368,24 +1452,42 @@ export class DrawingSession {
     return changed && this.#active?.sweep === true;
   }
 
+  /**
+   * Takes back the last change, while nothing is being drawn: first a shape
+   * that {@link drop} dropped, which comes back as it was, with the tool and
+   * size chosen now, as a shape being placed takes them; else the last step
+   * of the history. Returns whether there was one.
+   */
   undo(): boolean {
     this.#moved = undefined;
-    return this.#active === undefined && this.#history.undo();
+    if (this.#active !== undefined) return false;
+    const dropped = this.#dropped;
+    if (dropped === undefined) return this.#history.undo();
+    this.#dropped = undefined;
+    this.#active = { ...dropped.active, tool: this.tool, size: this.size };
+    this.#snaps = [...dropped.snaps];
+    // Where the pointer is goes back to it at its next move.
+    this.#next = undefined;
+    return true;
   }
 
   redo(): boolean {
     this.#moved = undefined;
-    return this.#active === undefined && this.#history.redo();
+    if (this.#active !== undefined) return false;
+    const redone = this.#history.redo();
+    if (redone) this.#dropped = undefined;
+    return redone;
   }
 
   /**
    * Removes every stroke and the base layer, as one undoable step, and drops
-   * a polygon or a path being placed, or a path being adjusted. A stroke
-   * being dragged keeps everything.
+   * a polygon or a path being placed, or a path being adjusted, and one that
+   * {@link drop} dropped. A stroke being dragged keeps everything.
    */
   clear(): void {
     if (this.placing) this.cancel();
     if (this.#active !== undefined) return;
+    this.#dropped = undefined;
     if (
       this.document.strokes.length === 0 &&
       this.document.base === undefined
@@ -1414,6 +1516,7 @@ export class DrawingSession {
     if (document === this.#moved) this.#history.amend(state);
     else this.#history.push(state);
     this.#moved = moved;
+    this.#dropped = undefined;
     return true;
   }
 
@@ -1433,6 +1536,7 @@ export class DrawingSession {
   ): void {
     if (this.#active !== undefined) return;
     this.#moved = undefined;
+    this.#dropped = undefined;
     this.#history.push({ document, gridOrigin });
   }
 
@@ -1457,8 +1561,9 @@ export class DrawingSession {
         (gridOrigin ?? gridOriginOf(document, 0, period, grid)) + dxPixels,
     }));
     this.#saved = move(this.#saved);
-    const active = this.#active;
-    if (active !== undefined) {
+    // A shape that Esc dropped comes back where it was over the drawing.
+    for (const active of [this.#active, this.#dropped?.active]) {
+      if (active === undefined) continue;
       const dx = toUnits(dxPixels);
       for (let index = 0; index < active.points.length; index += 2) {
         active.points[index] = (active.points[index] ?? 0) + dx;
@@ -1494,6 +1599,7 @@ export class DrawingSession {
 
   /** Records `document` as one undoable step, keeping the grid. */
   #push(document: InkDocument): void {
+    this.#dropped = undefined;
     this.#history.push({ document, gridOrigin: this.gridOrigin });
   }
 }

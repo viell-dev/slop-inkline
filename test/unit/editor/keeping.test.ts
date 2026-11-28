@@ -595,6 +595,87 @@ describe("Keeping", () => {
     expect(store.list()).toEqual([]);
   });
 
+  it("keeps a path being placed, or waiting with its adjustments, in its draft as the ink it would be, which a restart offers back as ink", async () => {
+    const storage = new MemoryStorage();
+    const editing = await editor({
+      existing: { strokes: [stroke(10)] },
+      drafts: { store: new DraftStore(storage) },
+    });
+    const { session, keeping } = editing;
+    /** The strokes of the editor's draft, as storage holds them. */
+    const kept = (): readonly Stroke[] => {
+      const draft = new DraftStore(storage)
+        .list()
+        .find(({ id }) => id === keeping.draftId);
+      if (draft === undefined) throw new Error("no draft");
+      return draft.strokes;
+    };
+    session.shape = "path";
+    session.begin({ x: 20, y: 40 });
+    session.end({ x: 20, y: 40 });
+    session.begin({ x: 60, y: 40 });
+    session.end({ x: 60, y: 40 });
+    // As after each step, a point placed here.
+    keeping.keepDraft();
+    expect(kept()).toEqual([stroke(10), ...session.placedStrokes]);
+    expect(kept()[1]?.points.slice(-2)).toEqual([60 * 16, 40 * 16]);
+    // Ended, and its last point dragged down while it waits.
+    session.endPath();
+    session.begin({ x: 60, y: 40 });
+    session.extend([{ x: 60, y: 100 }]);
+    session.end({ x: 60, y: 100 });
+    keeping.keepDraft();
+    const waiting = session.placedStrokes;
+    expect(kept()).toEqual([stroke(10), ...waiting]);
+    expect(kept()[1]?.points.slice(-2)).toEqual([60 * 16, 100 * 16]);
+    // Obsidian closed meanwhile: nothing ended the path. Opened again, the
+    // symbol offers the draft, and Restore brings the path back as ink.
+    const again = await editor({
+      existing: { strokes: [stroke(10)] },
+      drafts: { store: new DraftStore(storage) },
+    });
+    again.keeping.holdDraft();
+    await again.keeping.offerDraft();
+    again.answer("Restore the unsaved drawing?", "Restore");
+    expect(again.session.placing).toBe(false);
+    expect(again.session.document.strokes).toEqual([stroke(10), ...waiting]);
+    // As ending it would have made it.
+    session.end();
+    expect(session.document.strokes).toEqual([stroke(10), ...waiting]);
+  });
+
+  it("keeps a polygon being placed in its draft with the corners it has, and no longer once it is dropped", async () => {
+    const store = new DraftStore(new MemoryStorage());
+    const editing = await editor({
+      existing: { strokes: [stroke(10)] },
+      drafts: { store },
+    });
+    const { session, keeping } = editing;
+    session.shape = "polygon";
+    for (const x of [20, 60]) {
+      session.begin({ x, y: 40 });
+      session.end({ x, y: 40 });
+    }
+    // The next side follows the pointer, which a draft does not keep.
+    session.extend([{ x: 60, y: 100 }]);
+    keeping.keepDraft();
+    const polygon = {
+      tool: "pen",
+      size: 192,
+      points: [20 * 16, 40 * 16, 60 * 16, 40 * 16],
+      kind: "polygon",
+    };
+    expect(store.list()[0]?.strokes).toEqual([stroke(10), polygon]);
+    // Dropped, as Esc drops it, the drawing is as opened, so the draft goes.
+    session.drop();
+    keeping.keepDraft();
+    expect(store.list()).toEqual([]);
+    // Brought back, as Undo does, it is kept again.
+    session.undo();
+    keeping.keepDraft();
+    expect(store.list()[0]?.strokes).toEqual([stroke(10), polygon]);
+  });
+
   it("does not make an empty new symbol", async () => {
     const editing = await editor();
     await editing.keeping.saveOnly();

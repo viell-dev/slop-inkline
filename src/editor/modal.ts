@@ -391,9 +391,15 @@ export class InkEditorModal extends Modal {
         // Only a fresh press ends a shape or makes a waiting path ink.
         if (repeats) return true;
         // A path being placed waits, once it ends, to be adjusted; a second
-        // Enter makes it ink, as a polygon's one does.
-        if (this.#session.endPath()) this.#pathWaits();
-        else this.#endPlacing();
+        // Enter makes it ink, as a polygon's one does. Ending it takes a drag
+        // still held as it shows, so the draft is kept again at once, as
+        // letting go of the drag would have kept it.
+        if (this.#session.endPath()) {
+          this.#changed();
+          this.#pathWaits();
+        } else {
+          this.#endPlacing();
+        }
         return true;
       },
       arrowKey: (name, shift) => this.#arrowKey(name, shift),
@@ -588,8 +594,12 @@ export class InkEditorModal extends Modal {
 
   /**
    * Closes the editor, asking first when the drawing has unsaved changes:
-   * save, discard, or keep drawing. Esc, the close button, and a click
-   * outside all come here, since Obsidian closes modals through this method.
+   * save, discard, or keep drawing. The close button and a click outside
+   * come here, as Obsidian closes modals through this method, and so does Esc
+   * once nothing is being placed ({@link onEscapeKey}). A polygon or a path
+   * being placed, or a path waiting to be made ink, is unsaved work like any
+   * other, so it stays as it is, and the question asks about it with the rest
+   * (#489): a click beside the editor never drops it.
    */
   override close(): void {
     if (this.#closing) {
@@ -601,18 +611,39 @@ export class InkEditorModal extends Modal {
     });
   }
 
-  /** What {@link close} does while the editor is open: Esc, for one. */
-  #closeAsked(): void {
-    // A polygon or path being placed is dropped first, and the editor stays
-    // open.
-    if (this.#session.placing) {
-      const path = this.#session.placingPath;
-      this.#session.cancel();
-      this.#announce(path ? "Path dropped" : "Polygon dropped");
-      this.#updateButtons();
-      this.#render();
+  /**
+   * Esc. A polygon or a path being placed, or a path waiting to be made ink,
+   * is dropped, and Undo brings it back; otherwise Esc closes the editor, as
+   * {@link close} does.
+   *
+   * Obsidian's Modal handles Esc in this method, which it calls from its
+   * scope's Escape key and does not declare in its API; the close button and
+   * a click outside call `close()` without it. Its own, which this takes the
+   * place of, does nothing for an event already handled, and else prevents
+   * the default and closes, as this does. Obsidian 1.13.4 to 1.15.1 call it
+   * so, as do its own modals that treat Esc apart, such as the theme
+   * browser's. Should a later version stop, Esc closes as the close button
+   * does, which asks and drops nothing, and path.e2e.ts fails on it.
+   */
+  onEscapeKey(event: KeyboardEvent): void {
+    if (event.defaultPrevented) return;
+    event.preventDefault();
+    if (this.#closing || !this.#session.placing) {
+      this.close();
       return;
     }
+    this.#line.act(() => {
+      const path = this.#session.placingPath;
+      this.#session.drop();
+      this.#changed();
+      this.#announce(
+        `${path ? "Path" : "Polygon"} dropped: Undo brings it back`,
+      );
+    });
+  }
+
+  /** What {@link close} does while the editor is open. */
+  #closeAsked(): void {
     const keeping = this.#keeping;
     if (keeping.saving) {
       keeping.announceSaving();
@@ -627,6 +658,11 @@ export class InkEditorModal extends Modal {
     // One question for a symbol used more than once, rather than two.
     const uses = keeping.sharedUses();
     const name = keeping.displayName;
+    const shape = this.#placedShape;
+    const unsaved =
+      shape === undefined
+        ? "The drawing has changes that are not saved."
+        : `The drawing has changes that are not saved, and the ${shape} you are placing is not ink yet: saving makes it ink as it is.`;
     this.#ask({
       title:
         uses === undefined
@@ -634,8 +670,8 @@ export class InkEditorModal extends Modal {
           : `Save the changes to ${name}?`,
       content:
         uses === undefined
-          ? "The drawing has changes that are not saved."
-          : `The drawing has changes that are not saved. ${usedText(name, uses)} Replace changes it in all of them. For a variant that leaves them as they are, start a new symbol with Copy from instead.`,
+          ? unsaved
+          : `${unsaved} ${usedText(name, uses)} Replace changes it in all of them. For a variant that leaves them as they are, start a new symbol with Copy from instead.`,
       answers: [
         {
           text: uses === undefined ? "Save" : "Replace",
@@ -657,7 +693,27 @@ export class InkEditorModal extends Modal {
         },
       ],
       cancel: "Keep drawing",
+      // The shape is where it was, and this says how to finish or drop it.
+      dismissed: () => {
+        if (this.#ended()) return;
+        const placed = this.#placedShape;
+        if (placed === undefined) return;
+        this.#announce(
+          placed === "polygon"
+            ? "Polygon kept: Enter ends it, and Esc drops it"
+            : this.#session.adjustingPath
+              ? "Path kept: Enter or Finish path makes it ink, and Esc drops it"
+              : "Path kept: Enter ends it, Finish path makes it ink, and Esc drops it",
+        );
+      },
     });
+  }
+
+  /** What is being placed, a polygon or a path, waiting or not, if anything. */
+  get #placedShape(): "polygon" | "path" | undefined {
+    const session = this.#session;
+    if (!session.placing) return undefined;
+    return session.placingPath ? "path" : "polygon";
   }
 
   /**
@@ -1008,6 +1064,7 @@ export class InkEditorModal extends Modal {
     this.#session.snap = !this.#session.snap;
     this.#updateButtons();
     this.#render();
+    this.#placedChanged();
   }
 
   /**
@@ -1035,6 +1092,7 @@ export class InkEditorModal extends Modal {
     this.#session.flatEnds = !this.#session.flatEnds;
     this.#updateButtons();
     this.#render();
+    this.#placedChanged();
   }
 
   /** Switches between drawing ellipses and drawing as the pointer goes. */
@@ -1080,6 +1138,7 @@ export class InkEditorModal extends Modal {
     this.#session.fill = !this.#session.fill;
     this.#updateButtons();
     this.#render();
+    this.#placedChanged();
   }
 
   /**
@@ -1124,6 +1183,7 @@ export class InkEditorModal extends Modal {
     this.#tracing.stopMoving();
     this.#updateButtons();
     this.#render();
+    this.#placedChanged();
   }
 
   #setSize(index: number): void {
@@ -1131,19 +1191,31 @@ export class InkEditorModal extends Modal {
     this.#session.rebrush();
     this.#updateButtons();
     this.#render();
+    this.#placedChanged();
+  }
+
+  /**
+   * Keeps the draft again after a change to how a polygon or a path being
+   * placed, or a path waiting, would be ink, as its brush, Fill, the grid, or
+   * Flat ends, as the draft keeps it as that ink.
+   */
+  #placedChanged(): void {
+    if (this.#session.placing) this.#keeping.keepDraft();
   }
 
   /**
    * Undoes the last change, or the last corner of a polygon being placed, or
-   * the last step of a path being placed.
+   * the last step of a path being placed, or brings back a shape that Esc
+   * dropped, which says again how to finish a path waiting to be made ink.
    */
   #undo(): void {
     if (this.#session.undoCorner()) {
-      this.#updateButtons();
-      this.#render();
+      this.#changed();
       return;
     }
-    if (this.#session.undo()) this.#changed();
+    if (!this.#session.undo()) return;
+    this.#changed();
+    this.#pathWaits();
   }
 
   #redo(): void {

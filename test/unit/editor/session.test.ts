@@ -3464,3 +3464,281 @@ describe("DrawingSession's paths", () => {
     expect(session.pathMarks?.nodes.at(-1)).toMatchObject({ x: 40, y: 64 });
   });
 });
+
+describe("DrawingSession's shapes being placed, as drafts keep them and Esc drops them", () => {
+  /** Clicks at a point: a press and a release there. */
+  const click = (session: DrawingSession, x: number, y: number): void => {
+    session.begin({ x, y });
+    session.end({ x, y });
+  };
+
+  /** A press at `from`, dragged to `to`, and let go there. */
+  const drag = (
+    session: DrawingSession,
+    from: InputPoint,
+    to: InputPoint,
+  ): void => {
+    session.begin(from);
+    session.extend([{ x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }, to]);
+    session.end(to);
+  };
+
+  /** The last of a stroke's points, in pixels. */
+  const lastOf = (stroke: Stroke | undefined): InputPoint => {
+    const points = stroke?.points ?? [];
+    return { x: (points.at(-2) ?? 0) / 16, y: (points.at(-1) ?? 0) / 16 };
+  };
+
+  it("gives a path being placed, ended, or closed, and a polygon being placed, as the ink ending it now commits", () => {
+    const session = new DrawingSession(emptyDocument);
+    expect(session.placedStrokes).toEqual([]);
+    // A stroke being dragged is the pointer's to finish.
+    session.begin({ x: 5, y: 5 });
+    session.extend([{ x: 20, y: 20 }]);
+    expect(session.placedStrokes).toEqual([]);
+    session.end({ x: 20, y: 20 });
+    session.shape = "path";
+    session.fill = true;
+    click(session, 10, 50);
+    drag(session, { x: 60, y: 50 }, { x: 60, y: 80 });
+    // Not the next curve, which follows the pointer to where a click goes.
+    session.extend([{ x: 90, y: 20 }]);
+    const placing = session.placedStrokes;
+    expect(placing).toHaveLength(1);
+    expect(lastOf(placing[0])).toEqual({ x: 60, y: 50 });
+    // Ended, it is the same, open.
+    session.endPath();
+    expect(session.placedStrokes).toEqual(placing);
+    // A point being dragged while it waits is where the drag shows it, as
+    // ending it then would leave it.
+    session.begin({ x: 60, y: 50 });
+    session.extend([{ x: 60, y: 40 }]);
+    const dragging = session.placedStrokes;
+    expect(lastOf(dragging[0])).toEqual({ x: 60, y: 40 });
+    session.end({ x: 60, y: 40 });
+    expect(session.placedStrokes).toEqual(dragging);
+    // Closed, with Fill on, it is the fill and its line.
+    session.undoCorner();
+    session.undoCorner();
+    expect(session.pathState).toBe("placing");
+    click(session, 10, 50);
+    expect(session.pathState).toBe("closed");
+    const closed = session.placedStrokes;
+    expect(closed.map(({ kind }) => kind)).toEqual(["fill", undefined]);
+    session.end();
+    expect(session.document.strokes.slice(1)).toEqual(closed);
+    expect(session.placedStrokes).toEqual([]);
+    // A polygon being placed: its corners so far, open and unfilled.
+    session.shape = "polygon";
+    click(session, 10, 20);
+    click(session, 40, 20);
+    session.extend([{ x: 40, y: 60 }]);
+    const polygon = session.placedStrokes;
+    expect(polygon).toEqual([
+      { tool: "pen", size: 192, points: [160, 320, 640, 320], kind: "polygon" },
+    ]);
+    session.end();
+    expect(session.document.strokes.at(-1)).toEqual(polygon[0]);
+  });
+
+  it("drops a shape being placed for Undo to bring back as it was, with its own steps", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "path";
+    expect(session.drop()).toBe(false);
+    click(session, 10, 20);
+    drag(session, { x: 40, y: 20 }, { x: 50, y: 20 });
+    click(session, 40, 20);
+    expect(session.pathState).toBe("ended");
+    // Its last point dragged down while it waits.
+    drag(session, { x: 40, y: 20 }, { x: 40, y: 50 });
+    const nodes = session.pathMarks?.nodes;
+    const ink = session.placedStrokes;
+    expect(session.canUndo).toBe(false);
+    expect(session.drop()).toBe(true);
+    expect(session.placing).toBe(false);
+    expect(session.placedStrokes).toEqual([]);
+    expect(session.document.strokes).toEqual([]);
+    // Nothing is left unsaved: Esc dropped it on purpose.
+    expect(session.dirty).toBe(false);
+    expect(session.canUndo).toBe(true);
+    expect(session.undo()).toBe(true);
+    expect(session.pathState).toBe("ended");
+    expect(session.pathMarks?.nodes).toEqual(nodes);
+    expect(session.placedStrokes).toEqual(ink);
+    expect(session.canUndo).toBe(false);
+    // Its own steps come back with it: the drag, then the ending.
+    expect(session.undoCorner()).toBe(true);
+    expect(session.pathMarks?.nodes.at(-1)).toMatchObject({ x: 40, y: 20 });
+    expect(session.undoCorner()).toBe(true);
+    expect(session.pathState).toBe("placing");
+    // Dropped again, it comes back with the brush chosen meanwhile, as a
+    // path being placed takes it.
+    session.drop();
+    session.tool = "eraser";
+    session.sizeIndex = 3;
+    session.rebrush();
+    session.undo();
+    expect(session.placedStrokes[0]).toMatchObject({
+      tool: "eraser",
+      size: 384,
+    });
+    // A press being held as Esc comes is let go as it shows, so that what it
+    // placed comes back, as a step of its own, and its release does nothing.
+    session.begin({ x: 70, y: 20 });
+    session.extend([{ x: 80, y: 20 }]);
+    session.drop();
+    session.end({ x: 80, y: 30 });
+    expect(session.document.strokes).toEqual([]);
+    session.undo();
+    expect(session.pathMarks?.nodes).toHaveLength(3);
+    expect(session.pathMarks?.nodes.at(-1)).toMatchObject({
+      x: 70,
+      y: 20,
+      handle: { x: 10, y: 0 },
+    });
+    expect(session.undoCorner()).toBe(true);
+    expect(session.pathMarks?.nodes).toHaveLength(2);
+    // A polygon too, with its corners, which it goes on from.
+    session.end();
+    session.shape = "polygon";
+    click(session, 10, 60);
+    click(session, 40, 60);
+    session.drop();
+    expect(session.placing).toBe(false);
+    session.undo();
+    click(session, 25, 90);
+    click(session, 10, 60);
+    expect(session.document.strokes.at(-1)?.points).toEqual([
+      160, 960, 640, 960, 400, 1440, 160, 960,
+    ]);
+  });
+
+  it("forgets a dropped shape once anything else is drawn or changed, or another shape is chosen, and moves it with a save", () => {
+    /**
+     * A session with two strokes drawn and the second undone, for Redo, and
+     * a path ended on its second point and dropped.
+     */
+    const dropped = (): DrawingSession => {
+      const session = new DrawingSession(emptyDocument);
+      for (const x of [100, 120]) {
+        session.begin({ x, y: 10 });
+        session.end({ x, y: 40 });
+      }
+      session.undo();
+      session.shape = "path";
+      click(session, 10, 20);
+      click(session, 40, 20);
+      click(session, 40, 20);
+      session.drop();
+      return session;
+    };
+    const changes: readonly [string, (session: DrawingSession) => void][] = [
+      [
+        "a press that starts something else",
+        (session) => {
+          session.begin({ x: 80, y: 80 });
+          session.cancel();
+        },
+      ],
+      [
+        "Redo",
+        (session) => {
+          session.redo();
+        },
+      ],
+      [
+        "Clear",
+        (session) => {
+          session.clear();
+        },
+      ],
+      [
+        "a move of the drawing",
+        (session) => {
+          session.moveDrawing(16);
+        },
+      ],
+      [
+        "a restored draft",
+        (session) => {
+          session.replace({ strokes: [] });
+        },
+      ],
+      [
+        "another shape",
+        (session) => {
+          session.shape = "ellipse";
+          session.shape = "path";
+        },
+      ],
+    ];
+    for (const [what, change] of changes) {
+      const session = dropped();
+      change(session);
+      session.undo();
+      expect(session.placing, what).toBe(false);
+    }
+    // The same shape chosen again is no other.
+    const same = dropped();
+    same.shape = "path";
+    same.undo();
+    expect(same.pathState).toBe("ended");
+    // A save that moves the drawing moves it too.
+    const saved = dropped();
+    saved.rebase(-5);
+    saved.undo();
+    expect(saved.pathMarks?.nodes).toEqual([
+      { x: 5, y: 20, onGrid: false },
+      { x: 35, y: 20, onGrid: false },
+    ]);
+  });
+
+  it("loses only what a cancelled press did, never the shape it was placing or adjusting", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "path";
+    click(session, 10, 20);
+    click(session, 40, 20);
+    // A point placed by the press goes, and the path stays.
+    session.begin({ x: 70, y: 20 });
+    session.cancelPress();
+    session.end({ x: 70, y: 20 });
+    expect(session.pathMarks?.nodes).toHaveLength(2);
+    expect(session.pathState).toBe("placing");
+    click(session, 40, 20);
+    expect(session.pathState).toBe("ended");
+    // A drag of a point while it waits goes back to before the press.
+    session.begin({ x: 40, y: 20 });
+    session.extend([{ x: 40, y: 50 }]);
+    session.cancelPress();
+    expect(session.pathMarks?.nodes.at(-1)).toMatchObject({ x: 40, y: 20 });
+    expect(session.pathState).toBe("ended");
+    // A cancel with nothing pressed changes nothing.
+    session.cancelPress();
+    expect(session.pathState).toBe("ended");
+    expect(session.pathMarks?.nodes).toHaveLength(2);
+    session.end();
+    // A path's first press is all of it.
+    session.begin({ x: 10, y: 60 });
+    session.cancelPress();
+    expect(session.placing).toBe(false);
+    // A polygon keeps its corners at a later press, which only shows where
+    // the next goes, and goes at its first.
+    session.shape = "polygon";
+    click(session, 10, 60);
+    click(session, 40, 60);
+    session.begin({ x: 60, y: 60 });
+    session.cancelPress();
+    expect(session.placedStrokes[0]?.points).toEqual([160, 960, 640, 960]);
+    session.end();
+    session.begin({ x: 10, y: 90 });
+    session.cancelPress();
+    expect(session.placing).toBe(false);
+    // A stroke being dragged goes, as before.
+    session.shape = "free";
+    session.begin({ x: 10, y: 20 });
+    session.extend([{ x: 30, y: 20 }]);
+    session.cancelPress();
+    expect(session.drawing).toBe(false);
+    expect(session.document.strokes).toHaveLength(2);
+  });
+});
