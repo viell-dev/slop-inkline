@@ -307,6 +307,58 @@
   outline: 2px dashed var(--interactive-accent);
 }
 
+/*
+ * The scroll bar of a magnified drawing area, in a row of its own below it.
+ * The row stays while Zoom is on, so that the bar coming and going changes no
+ * height, which would move the drawing under the pointer (#427); the bar shows
+ * in it only while the drawing reaches past the view. It takes Obsidian's own
+ * scroll bars' variables, so that it looks like them in either theme.
+ */
+.inkline-scroll {
+  display: none;
+  position: relative;
+  box-sizing: border-box;
+  height: var(--scrollbar-height, 12px);
+  /* The surface handles the pointer itself, as the drawing area does. */
+  touch-action: none;
+  user-select: none;
+}
+
+.inkline-scroll.is-zoomed {
+  display: block;
+}
+
+.inkline-scroll.is-shown {
+  background-color: var(--scrollbar-bg, transparent);
+}
+
+.inkline-scroll-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  /* The part of the drawing in view, as scroll.ts sets it. */
+  left: var(--inkline-scroll-thumb-left, 0);
+  width: var(--inkline-scroll-thumb-width, 0);
+  visibility: hidden;
+  border-radius: var(--scrollbar-radius, var(--radius-l));
+  background-color: var(
+    --scrollbar-thumb-bg,
+    var(--background-modifier-border)
+  );
+}
+
+.inkline-scroll.is-shown .inkline-scroll-thumb {
+  visibility: visible;
+}
+
+.inkline-scroll-thumb:hover,
+.inkline-scroll.is-dragging .inkline-scroll-thumb {
+  background-color: var(
+    --scrollbar-active-thumb-bg,
+    var(--background-modifier-border-hover)
+  );
+}
+
 /* A line of the note's text, with the symbol at its size there. */
 .inkline-preview {
   margin-top: var(--size-4-2);

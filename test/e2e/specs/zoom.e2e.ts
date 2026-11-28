@@ -17,7 +17,13 @@ import {
   waitForStatus,
 } from "../support/editor.ts";
 import { setPageZoom } from "../support/cursor.ts";
-import { boxOf, type Point } from "../support/pointer.ts";
+import {
+  boxOf,
+  tops,
+  watchTops,
+  type Box,
+  type Point,
+} from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { framesDrawn } from "../support/waits.ts";
 
@@ -368,6 +374,76 @@ async function dragZooming(
   return by === "key"
     ? dragWatched(from, to, { keys: [["z"]] })
     : dragWatched(from, to, {}, "zoom");
+}
+
+/** What the scroll bar below a zoomed drawing area shows, as it is now. */
+interface ScrollBar {
+  /** Its row's height, in CSS pixels: none while it has no row. */
+  readonly height: number;
+  /** Whether its thumb shows, as while the drawing reaches past the view. */
+  readonly shown: boolean;
+  /** Its track's and its thumb's boxes, in the window's CSS pixels. */
+  readonly track: Box;
+  readonly thumb: Box;
+  readonly role: string | null;
+  readonly orientation: string | null;
+  /** Whether it says it controls the drawing area. */
+  readonly controlsSurface: boolean;
+  readonly value: string | null;
+  readonly hidden: string | null;
+  /** Whether it can take the focus. */
+  readonly focusable: boolean;
+}
+
+async function scrollBar(): Promise<ScrollBar> {
+  return browser.execute(() => {
+    const editor = document.querySelector(".inkline-editor");
+    const bar = editor?.querySelector(".inkline-scroll");
+    const thumb = bar?.querySelector(".inkline-scroll-thumb");
+    if (!(bar instanceof HTMLElement) || !(thumb instanceof HTMLElement)) {
+      throw new Error("no scroll bar");
+    }
+    const box = (element: Element) => {
+      const { left, right, top, bottom } = element.getBoundingClientRect();
+      return { left, right, top, bottom };
+    };
+    const controls = bar.getAttribute("aria-controls") ?? "";
+    return {
+      height: bar.offsetHeight,
+      shown:
+        bar.offsetHeight > 0 &&
+        getComputedStyle(thumb).visibility === "visible",
+      track: box(bar),
+      thumb: box(thumb),
+      role: bar.getAttribute("role"),
+      orientation: bar.getAttribute("aria-orientation"),
+      controlsSurface:
+        controls !== "" &&
+        document.getElementById(controls) ===
+          editor?.querySelector(".inkline-surface"),
+      value: bar.getAttribute("aria-valuenow"),
+      hidden: bar.getAttribute("aria-hidden"),
+      focusable: bar.tabIndex >= 0 || thumb.tabIndex >= 0,
+    };
+  });
+}
+
+/** Whether the drawing area has the focus. */
+async function surfaceFocused(): Promise<boolean> {
+  return browser.execute(
+    () =>
+      document.activeElement?.matches(".inkline-editor .inkline-surface") ===
+      true,
+  );
+}
+
+/** Presses the mouse at `from` in the window, moves it to `to`, and lets go. */
+async function mouseDrag(from: Point, to: Point): Promise<void> {
+  await mouseTo(from)
+    .down()
+    .move({ origin: "viewport", ...to, duration: 100 })
+    .up()
+    .perform();
 }
 
 /** How many of the preview's pixels hold ink. */
@@ -951,5 +1027,197 @@ describe("Zoom", function () {
     // as in a save.
     expect(result.erased.size).toEqual(result.left.size);
     expect(result.erased.alpha).toBe(result.left.alpha);
+  });
+
+  // A scroll bar below the zoomed drawing area shows where the view is, and
+  // moves it along, while the drawing reaches past the view (#446 §5).
+  describe("the scroll bar", function () {
+    /** Draws a stroke across most of the usual view, wider than Zoom shows. */
+    async function drawWide(): Promise<void> {
+      await draw([
+        [0.08, 0.5],
+        [0.5, 0.5],
+        [0.92, 0.5],
+      ]);
+      await browser.waitUntil(async () => (await storedDrafts()).length === 1);
+    }
+
+    it("shows only while zoomed and the drawing reaches past the view", async function () {
+      await openEditor();
+      const usual = await surfaceSize();
+      // Out of Zoom, no row.
+      expect((await scrollBar()).height).toBe(0);
+      // A short stroke the zoomed view shows whole: the row, with no bar.
+      await draw([
+        [0.45, 0.5],
+        [0.55, 0.5],
+      ]);
+      await browser.waitUntil(async () => (await storedDrafts()).length === 1);
+      await browser.keys("z");
+      await waitForStatus("Zoomed in");
+      await framesDrawn();
+      const row = await scrollBar();
+      expect(row.height).toBeGreaterThan(0);
+      expect(row.shown).toBe(false);
+      expect(row.hidden).toBe("true");
+      // One reaching past both sides of the view: the bar, with a thumb as
+      // much shorter than its track as the view is narrower than the drawing.
+      await draw([
+        [0.02, 0.6],
+        [0.98, 0.6],
+      ]);
+      await browser.waitUntil(async () => (await scrollBar()).shown);
+      const bar = await scrollBar();
+      // Its row kept its height as the bar came.
+      expect(bar.height).toBe(row.height);
+      expect(bar.hidden).toBeNull();
+      expect(bar.role).toBe("scrollbar");
+      expect(bar.orientation).toBe("horizontal");
+      expect(bar.controlsSurface).toBe(true);
+      expect(bar.focusable).toBe(false);
+      // In the middle of what it spans, as the view is.
+      expect(Number(bar.value)).toBeGreaterThan(30);
+      expect(Number(bar.value)).toBeLessThan(70);
+      const thumb = bar.thumb.right - bar.thumb.left;
+      const track = bar.track.right - bar.track.left;
+      expect(thumb).toBeGreaterThan(0);
+      expect(thumb).toBeLessThan(track * 0.9);
+      await saveScreenshot("zoom-scroll-bar");
+      // Zoomed out, the row goes, and the drawing area is as it was.
+      await browser.keys("z");
+      await waitForStatus("Zoomed out");
+      await browser.waitUntil(
+        async () => Math.abs((await surfaceSize()).height - usual.height) < 1,
+      );
+      expect((await scrollBar()).height).toBe(0);
+    });
+
+    it("moves along the drawing as its thumb is dragged and its track pressed", async function () {
+      await openEditor();
+      await drawWide();
+      await browser.keys("z");
+      await waitForStatus("Zoomed in");
+      await browser.waitUntil(async () => (await scrollBar()).shown);
+      const across = await shownAcross();
+      const start = await tap(0.5, 0.5);
+      const before = await scrollBar();
+      const track = before.track.right - before.track.left;
+      const thumb = before.thumb.right - before.thumb.left;
+      // The thumb is to the track as the view is to what the bar spans.
+      const span = (across * track) / thumb;
+      const middle = (before.thumb.top + before.thumb.bottom) / 2;
+      const grab = Math.round((before.thumb.left + before.thumb.right) / 2);
+      await mouseDrag(
+        { x: grab, y: Math.round(middle) },
+        { x: grab + 40, y: Math.round(middle) },
+      );
+      // The focus stays on the drawing area, for its keys.
+      expect(await surfaceFocused()).toBe(true);
+      const dragged = await tap(0.5, 0.5);
+      const expected = (40 * (span - across)) / (track - thumb);
+      expect(Math.abs(dragged.x - start.x - expected)).toBeLessThanOrEqual(2);
+      // A press on the track brings the thumb's middle there, as far as it
+      // goes: here, to the end of what the bar spans.
+      const end = await scrollBar();
+      await clickAt({
+        x: Math.round(end.track.right - 2),
+        y: Math.round(middle),
+      });
+      await browser.waitUntil(async () => (await scrollBar()).value === "100");
+      const atEnd = await scrollBar();
+      expect(Math.abs(atEnd.thumb.right - atEnd.track.right)).toBeLessThan(1);
+      await clickAt({
+        x: Math.round(end.track.left + 2),
+        y: Math.round(middle),
+      });
+      await browser.waitUntil(async () => (await scrollBar()).value === "0");
+      // The wheel over the bar moves along too, as over the drawing area.
+      const left = await tap(0.5, 0.5);
+      const { width } = await surfaceSize();
+      // From the window's corner, as with no origin.
+      await browser
+        .action("wheel")
+        .scroll({
+          x: Math.round((end.track.left + end.track.right) / 2),
+          y: Math.round(middle),
+          deltaX: 0,
+          deltaY: 100,
+        })
+        .perform();
+      const wheeled = await tap(0.5, 0.5);
+      expect(
+        Math.abs(wheeled.x - left.x - (100 / width) * across),
+      ).toBeLessThanOrEqual(1.5);
+    });
+
+    // The bar comes as the wheel takes the view past the drawing during a
+    // stroke, in a row that was there all along, so that the drawing area
+    // stays where it is under the pointer (#427), and the stroke goes on to
+    // the pointer (#393).
+    it("comes during a stroke without moving the drawing area", async function () {
+      await openEditor();
+      await browser.keys("z");
+      await waitForStatus("Zoomed in");
+      const from = await inWindow(0.4, 0.65);
+      const to = await inWindow(0.6, 0.35);
+      await drag(from, to);
+      await strokeAt(1);
+      await framesDrawn();
+      expect((await scrollBar()).shown).toBe(false);
+      await watchTops();
+      const released = await dragWatched(from, to, { wheel: 600 });
+      expect(released.inked).toBe(true);
+      await strokeAt(2);
+      const seen = await tops();
+      expect(seen.at(-1)?.type).toBe("pointerup");
+      expect(new Set(seen.map(({ top }) => top)).size).toBe(1);
+      expect((await scrollBar()).shown).toBe(true);
+    });
+
+    it("takes Obsidian's scroll bar colours, in light and dark themes", async function () {
+      const themes = await browser.execute(() =>
+        Array.from(document.body.classList).filter(
+          (name) => name === "theme-light" || name === "theme-dark",
+        ),
+      );
+      try {
+        await openEditor();
+        await drawWide();
+        await browser.keys("z");
+        await waitForStatus("Zoomed in");
+        await browser.waitUntil(async () => (await scrollBar()).shown);
+        // Away from the thumb, which takes another colour under the pointer.
+        await mouseTo({ x: 1, y: 1 }).perform();
+        const colours: string[] = [];
+        for (const theme of ["theme-light", "theme-dark"]) {
+          const seen = await browser.execute(async (wanted) => {
+            document.body.classList.remove("theme-light", "theme-dark");
+            document.body.classList.add(wanted);
+            const thumb = document.querySelector(
+              ".inkline-editor .inkline-scroll-thumb",
+            );
+            if (!(thumb instanceof HTMLElement)) throw new Error("no thumb");
+            // The colour the theme gives its own scroll bars' thumbs.
+            const probe = document.createElement("div");
+            probe.style.backgroundColor = "var(--scrollbar-thumb-bg)";
+            document.body.append(probe);
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            const own = getComputedStyle(probe).backgroundColor;
+            probe.remove();
+            return { thumb: getComputedStyle(thumb).backgroundColor, own };
+          }, theme);
+          expect(seen.thumb).toBe(seen.own);
+          expect(seen.thumb).not.toBe("rgba(0, 0, 0, 0)");
+          colours.push(seen.thumb);
+          await saveScreenshot(`zoom-scroll-bar-${theme}`);
+        }
+        expect(colours[0]).not.toBe(colours[1]);
+      } finally {
+        await browser.execute((restore) => {
+          document.body.classList.remove("theme-light", "theme-dark");
+          document.body.classList.add(...restore);
+        }, themes);
+      }
+    });
   });
 });
