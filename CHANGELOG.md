@@ -21,6 +21,13 @@ even one a public release; earlier pre-releases carry a suffix such as
   save waits for Obsidian, the editor now says to get the drawing back with
   **Inkline: Recover drafts** after a restart
   ([#487](https://github.com/viell-dev/slop-inkline/issues/487)).
+- **Zoom**'s scroll bar keeps its thumb under the pointer for the whole of a
+  drag. In a drag begun with the view moved off the drawing, by the wheel or the
+  arrow keys, the thumb stayed at the end of its track while the pointer went
+  on, or the bar went before the drag ended, though the view moved as it should.
+  Screen readers also name the bar now, for the drawing area, where they read
+  only that it was a scroll bar
+  ([#490](https://github.com/viell-dev/slop-inkline/issues/490)).
 
 ## 1.1.1 - 2026-11-28
 

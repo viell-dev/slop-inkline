@@ -428,6 +428,89 @@ async function scrollBar(): Promise<ScrollBar> {
   });
 }
 
+/** Where the scroll bar's thumb was, as {@link watchThumb} saw it. */
+interface ThumbSeen {
+  /** Where the pointer was across the window, in CSS pixels. */
+  readonly x: number;
+  /** The thumb's left edge in the window, in CSS pixels. */
+  readonly left: number;
+  /** Whether the thumb showed. */
+  readonly shown: boolean;
+}
+
+/**
+ * Records, in the page, where the scroll bar's thumb is two frames after
+ * each move of a pointer pressed on it, once the move has been drawn, with
+ * where the pointer was last, for {@link thumbSeen}.
+ */
+async function watchThumb(): Promise<void> {
+  await browser.execute(() => {
+    const bar = document.querySelector(".inkline-editor .inkline-scroll");
+    const thumb = bar?.querySelector(".inkline-scroll-thumb");
+    if (!(bar instanceof HTMLElement) || !(thumb instanceof HTMLElement)) {
+      throw new Error("no scroll bar");
+    }
+    const seen: { x: number; left: number; shown: boolean }[] = [];
+    Reflect.set(window, "inklineTestThumb", seen);
+    let x = 0;
+    bar.addEventListener("pointermove", (event) => {
+      if ((event.buttons & 1) === 0) return;
+      x = event.clientX;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          seen.push({
+            x,
+            left: thumb.getBoundingClientRect().left,
+            shown: getComputedStyle(thumb).visibility === "visible",
+          });
+        });
+      });
+    });
+  });
+}
+
+/** What {@link watchThumb} recorded. */
+async function thumbSeen(): Promise<ThumbSeen[]> {
+  return browser.execute(() => {
+    const seen: unknown = Reflect.get(window, "inklineTestThumb");
+    return Array.isArray(seen) ? (seen as ThumbSeen[]) : [];
+  });
+}
+
+/**
+ * Records, in the page, each time the scroll bar's box is read, and each
+ * attribute of the bar or its thumb that is set, for {@link barWatched}.
+ */
+async function watchBar(): Promise<void> {
+  await browser.execute(() => {
+    const bar = document.querySelector(".inkline-editor .inkline-scroll");
+    if (!(bar instanceof HTMLElement)) throw new Error("no scroll bar");
+    const watched = { measured: 0, changed: [] as string[] };
+    Reflect.set(window, "inklineTestBar", watched);
+    const measure = bar.getBoundingClientRect.bind(bar);
+    bar.getBoundingClientRect = () => {
+      watched.measured++;
+      return measure();
+    };
+    new MutationObserver((records) => {
+      for (const { attributeName } of records) {
+        watched.changed.push(attributeName ?? "");
+      }
+    }).observe(bar, { attributes: true, subtree: true });
+  });
+}
+
+/** What {@link watchBar} recorded. */
+async function barWatched(): Promise<{ measured: number; changed: string[] }> {
+  return browser.execute(() => {
+    const watched: unknown = Reflect.get(window, "inklineTestBar");
+    if (typeof watched !== "object" || watched === null) {
+      throw new Error("the bar is not watched");
+    }
+    return watched as { measured: number; changed: string[] };
+  });
+}
+
 /** Whether the drawing area has the focus. */
 async function surfaceFocused(): Promise<boolean> {
   return browser.execute(
@@ -1077,6 +1160,11 @@ describe("Zoom", function () {
       expect(bar.height).toBe(row.height);
       expect(bar.hidden).toBeNull();
       expect(bar.role).toBe("scrollbar");
+      // As the accessibility tree has it: a scroll bar, named for the
+      // drawing area it moves along.
+      const element = browser.$(".inkline-editor .inkline-scroll");
+      expect(await element.getComputedRole()).toBe("scrollbar");
+      expect(await element.getComputedLabel()).toBe("Drawing area");
       expect(bar.orientation).toBe("horizontal");
       expect(bar.controlsSurface).toBe(true);
       expect(bar.focusable).toBe(false);
@@ -1153,6 +1241,108 @@ describe("Zoom", function () {
       expect(
         Math.abs(wheeled.x - left.x - (100 / width) * across),
       ).toBeLessThanOrEqual(1.5);
+    });
+
+    // A drag keeps the view within what the bar spanned at the press, which
+    // with the view off the drawing reaches past the drawing's edge; the
+    // thumb keeps to it too, until the release. Worked out again for each
+    // view the drag moved to, it stayed at the track's end while the pointer
+    // went on, and the bar went once the view showed all of the drawing
+    // (#490).
+    it("keeps its thumb under the pointer in a drag begun with the view off the drawing", async function () {
+      await openEditor();
+      // A short stroke, which the zoomed view shows whole.
+      await draw([
+        [0.45, 0.5],
+        [0.55, 0.5],
+      ]);
+      await browser.waitUntil(async () => (await storedDrafts()).length === 1);
+      await browser.keys("z");
+      await waitForStatus("Zoomed in");
+      // Three views to the right, a quarter of a view a key.
+      for (let press = 0; press < 12; press++) {
+        await browser.keys("ArrowRight");
+      }
+      await browser.waitUntil(async () => (await scrollBar()).value === "100");
+      const before = await scrollBar();
+      const middle = Math.round((before.thumb.top + before.thumb.bottom) / 2);
+      const grab = Math.round((before.thumb.left + before.thumb.right) / 2);
+      // Where the pointer takes the thumb, from its left edge.
+      const grip = grab - before.thumb.left;
+      // In four steps to the left end of the track, pausing at each.
+      const steps = 4;
+      const way = before.thumb.left - before.track.left;
+      await watchThumb();
+      const pointer = mouseTo({ x: grab, y: middle }).down();
+      for (let step = 1; step <= steps; step++) {
+        pointer
+          .move({
+            origin: "viewport",
+            x: Math.round(grab - (step * way) / steps),
+            y: middle,
+            duration: 0,
+          })
+          .pause(300);
+      }
+      await pointer.up().perform();
+      const seen = await thumbSeen();
+      expect(seen.length).toBeGreaterThanOrEqual(steps);
+      for (const { x, left, shown } of seen) {
+        expect(shown).toBe(true);
+        expect(Math.abs(x - left - grip)).toBeLessThanOrEqual(1.5);
+      }
+      // At the left end of what the drag spanned, the view shows all of the
+      // drawing, and the bar goes once the pointer is let go.
+      await browser.waitUntil(async () => !(await scrollBar()).shown);
+    });
+
+    // The view is drawn again in every frame of a stroke; the bar measures
+    // its track only as its size changes, and writes nothing while its thumb
+    // stays where it is (#491).
+    it("leaves itself as it is while its thumb stays, and follows its track's length", async function () {
+      await openEditor();
+      await drawWide();
+      await browser.keys("z");
+      await waitForStatus("Zoomed in");
+      await browser.waitUntil(async () => (await scrollBar()).shown);
+      await framesDrawn();
+      await watchBar();
+      // A stroke within the drawing, which leaves what the bar spans as it is.
+      await draw([
+        [0.3, 0.4],
+        [0.5, 0.45],
+        [0.7, 0.4],
+      ]);
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.strokes.length === 2,
+      );
+      await framesDrawn();
+      expect(await barWatched()).toEqual({ measured: 0, changed: [] });
+      // Near the right end of its track, the thumb stays as far along it as
+      // the value says as the track gets shorter, which it would not on the
+      // track's earlier length.
+      const bar = await scrollBar();
+      const middle = Math.round((bar.thumb.top + bar.thumb.bottom) / 2);
+      await clickAt({ x: Math.round(bar.track.right - 2), y: middle });
+      await browser.waitUntil(async () => (await scrollBar()).value === "100");
+      await browser.execute(() => {
+        const editor = document.querySelector(".inkline-editor");
+        if (!(editor instanceof HTMLElement)) throw new Error("no editor");
+        editor.style.width = `${String(editor.offsetWidth - 120)}px`;
+      });
+      await browser.waitUntil(async () => {
+        const { track } = await scrollBar();
+        return track.right - track.left < bar.track.right - bar.track.left;
+      });
+      await framesDrawn();
+      const narrower = await scrollBar();
+      const track = narrower.track.right - narrower.track.left;
+      const thumb = narrower.thumb.right - narrower.thumb.left;
+      const along =
+        (narrower.thumb.left - narrower.track.left) / (track - thumb);
+      expect(narrower.shown).toBe(true);
+      expect(Number(narrower.value)).toBeGreaterThan(50);
+      expect(Math.abs(along * 100 - Number(narrower.value))).toBeLessThan(1);
     });
 
     // The bar comes as the wheel takes the view past the drawing during a

@@ -310,14 +310,21 @@ must keep released files readable and looking the same, as
   ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
   **Unreleased:** while zoomed, a scroll bar shows below the drawing area only
   while the drawing reaches past the view, in a row kept for as long as Zoom is
-  on; it is a scroll bar to assistive technology, controlling the drawing area,
-  and takes no focus. Dragging its thumb moves the view by as much of the
-  drawing as the thumb moved of its track, a press on its track brings the thumb
-  there, the wheel over it moves along, and the focus stays on the drawing area.
-  With the wheel moving the view off the drawing while a stroke is held, the bar
-  comes and the drawing area stays where it was in the window from the press to
-  the release. Its thumb takes the colour of Obsidian's own scroll bars in light
-  and dark themes (the same file, with its arithmetic in
+  on; it is a scroll bar to assistive technology, named for the drawing area and
+  controlling it, and takes no focus. Dragging its thumb moves the view by as
+  much of the drawing as the thumb moved of its track, a press on its track
+  brings the thumb there, the wheel over it moves along, and the focus stays on
+  the drawing area. In a drag begun with the view moved three views' widths
+  along, off the drawing, the thumb stays under the pointer at each step to the
+  track's other end, and the bar goes once it is let go with the drawing in view
+  ([#490](https://github.com/viell-dev/slop-inkline/issues/490)). While a stroke
+  drawn within the drawing leaves the thumb where it is, the bar neither
+  measures itself nor changes an attribute, and its thumb goes as far along a
+  track made shorter as its value says. With the wheel moving the view off the
+  drawing while a stroke is held, the bar comes and the drawing area stays where
+  it was in the window from the press to the release. Its thumb takes the colour
+  of Obsidian's own scroll bars in light and dark themes (the same file, with
+  its arithmetic in
   [scroll.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/scroll.test.ts),
   [#477](https://github.com/viell-dev/slop-inkline/issues/477)).
 - **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
