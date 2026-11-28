@@ -182,17 +182,44 @@ export async function createNote(path: string, text: string): Promise<void> {
   );
 }
 
-/** Closes every tab of the note at `path`. */
+/**
+ * Closes every tab of the note at `path`, once what each holds is saved, and
+ * returns once the saves its closing makes are done too, so that a write to
+ * the file after this is not overwritten by one of them (#504). A tab saves
+ * what it holds as it closes, without waiting, and save() returns at once
+ * while another runs, so this waits on Obsidian's private `saving` and
+ * `saveAgain` of each view, as startOver does.
+ */
 export async function closeTabs(path: string): Promise<void> {
-  await browser.executeObsidian(({ app, obsidian }, file) => {
-    for (const leaf of app.workspace.getLeavesOfType("markdown")) {
-      if (
-        leaf.view instanceof obsidian.MarkdownView &&
-        leaf.view.file?.path === file
-      ) {
-        leaf.detach();
+  await browser.executeObsidian(async ({ app, obsidian }, file) => {
+    const leaves = app.workspace
+      .getLeavesOfType("markdown")
+      .filter(
+        (leaf) =>
+          leaf.view instanceof obsidian.MarkdownView &&
+          leaf.view.file?.path === file,
+      );
+    const views = leaves.map((leaf) => leaf.view);
+    const settled = async (): Promise<void> => {
+      const busy = () =>
+        views.some(
+          (view) =>
+            Reflect.get(view, "saving") === true ||
+            Reflect.get(view, "saveAgain") === true,
+        );
+      const until = Date.now() + 15_000;
+      while (busy()) {
+        if (Date.now() > until) throw new Error(`${file} is still saving`);
+        await new Promise((resolve) => window.setTimeout(resolve, 20));
       }
+    };
+    for (const view of views) {
+      if (view instanceof obsidian.MarkdownView) await view.save();
     }
+    await settled();
+    for (const leaf of leaves) leaf.detach();
+    // Closing saves too.
+    await settled();
   }, path);
 }
 
