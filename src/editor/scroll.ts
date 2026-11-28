@@ -94,25 +94,59 @@ export interface ScrollHost {
   /** What the surface shows across now, in document pixels. */
   visible(): Span;
   /**
+   * Where the saved image would start and end, in document pixels, or
+   * undefined while there is no ink, as of the drawing area's last frame.
+   */
+  image(): Span | undefined;
+  /**
    * Moves the view along the drawing until its middle is at document x
    * `center`, as the wheel and the arrow keys move it.
    */
   moveTo(center: number): void;
 }
 
+/** The ids of the elements the bar refers to. */
+export interface ScrollIds {
+  /** The drawing area's, which the bar controls. */
+  readonly controls: string;
+  /** The drawing area's hidden label's, which names the bar too. */
+  readonly label: string;
+}
+
+/** The thumb as the bar shows it, with its value. */
+type Shown = Thumb & { readonly value: number };
+
 /**
  * The scroll bar's element, in a row of its own below the drawing area, which
  * {@link EditorScrollBar.zoomed} keeps for as long as the view is magnified,
  * so that the bar coming and going never changes a height. It is a pointer
  * control: the left and right arrow keys are the keyboard's way along, so it
- * takes no focus, and a press on it leaves the focus where it was.
+ * takes no focus, and a press on it leaves the focus where it was. The
+ * drawing area's label names it, as the drawing area's scroll bar.
+ *
+ * {@link update} runs in every frame the drawing area draws, so the bar
+ * measures its track only as its size changes, and writes to its elements
+ * only in a frame that changes the thumb or the value: one that leaves them
+ * as they were, as most frames of a stroke do, neither measures nor writes
+ * anything (#491).
  */
 export class EditorScrollBar {
   readonly #host: ScrollHost;
   readonly #bar: HTMLElement;
   readonly #thumb: HTMLElement;
+  /** Follows the track's length, for {@link #track}. */
+  readonly #resize: ResizeObserver;
+  /** Whether the view is magnified, as {@link zoomed} last said. */
+  #zoomed = false;
+  /**
+   * The track's length, in CSS pixels: the bar's, which has no padding, as
+   * last laid out, and none while it has no row.
+   */
+  #track = 0;
   /** What the bar spans as last shown, or undefined while it is hidden. */
   #span: Span | undefined;
+  /** The thumb and the value as last written, or undefined while hidden. */
+  #shown: Shown | undefined;
   /**
    * While the thumb is dragged: the pointer's id, what the bar spanned at the
    * press, which the drag keeps to, and how far from the thumb's left end it
@@ -122,15 +156,18 @@ export class EditorScrollBar {
     | { readonly pointerId: number; readonly span: Span; readonly grip: number }
     | undefined;
 
-  /** Adds the bar to `parent`, for the drawing area whose id `controls` is. */
-  constructor(parent: HTMLElement, controls: string, host: ScrollHost) {
+  /** Adds the bar to `parent`, for the drawing area that `ids` name. */
+  constructor(parent: HTMLElement, ids: ScrollIds, host: ScrollHost) {
     this.#host = host;
     this.#bar = parent.createDiv({
       cls: "inkline-scroll",
       attr: {
         role: "scrollbar",
+        // Not aria-label, which Obsidian turns into a tooltip, as the drawing
+        // area's label says.
+        "aria-labelledby": ids.label,
         "aria-orientation": "horizontal",
-        "aria-controls": controls,
+        "aria-controls": ids.controls,
         "aria-valuemin": "0",
         "aria-valuemax": "100",
         "aria-valuenow": "0",
@@ -138,6 +175,11 @@ export class EditorScrollBar {
       },
     });
     this.#thumb = this.#bar.createDiv({ cls: "inkline-scroll-thumb" });
+    this.#resize = new ResizeObserver((entries) => {
+      this.#track = entries.at(-1)?.borderBoxSize[0]?.inlineSize ?? 0;
+      this.update();
+    });
+    this.#resize.observe(this.#bar);
     this.#listen();
   }
 
@@ -152,43 +194,65 @@ export class EditorScrollBar {
    * the row's height counts there.
    */
   zoomed(magnified: boolean): void {
+    this.#zoomed = magnified;
     this.#bar.toggleClass("is-zoomed", magnified);
     if (magnified) return;
     // A drag of the thumb ends with it: a hidden bar keeps the pointer it
     // captured, and would go on moving the view.
     this.#endDrag();
-    this.show(false, undefined);
+    this.update();
   }
 
   /**
-   * Shows the bar for a view of `visible` while `magnified`, with the
-   * symbol's `image`, or undefined while there is no ink: only while the
-   * drawing reaches past the view ({@link scrollSpan}).
+   * Shows the bar for the view and the symbol's image as they are now, while
+   * zoomed, and only while the drawing reaches past the view
+   * ({@link scrollSpan}). While the thumb is dragged, it spans what it did
+   * at the press, as the drag keeps the view within that, so that the thumb
+   * stays under the pointer wherever the view was then (#490).
    */
-  show(
-    magnified: boolean,
-    image: Span | undefined,
-    visible: Span = this.#host.visible(),
-  ): void {
-    const span = magnified ? scrollSpan(visible, image) : undefined;
+  update(): void {
+    const visible = this.#host.visible();
+    const span = this.#zoomed
+      ? (this.#drag?.span ?? scrollSpan(visible, this.#host.image()))
+      : undefined;
     this.#span = span;
-    this.#bar.toggleClass("is-shown", span !== undefined);
-    this.#bar.setAttr("aria-hidden", span === undefined ? "true" : null);
-    if (span === undefined) return;
-    const thumb = thumbOf(span, visible, this.#track());
-    // As the stylesheet places it, as the drawing area's height is.
-    const { style } = this.#thumb;
-    style.setProperty("--inkline-scroll-thumb-left", `${String(thumb.left)}px`);
-    style.setProperty(
-      "--inkline-scroll-thumb-width",
-      `${String(thumb.width)}px`,
+    this.#show(
+      span === undefined
+        ? undefined
+        : {
+            ...thumbOf(span, visible, this.#track),
+            value: scrollValue(span, visible),
+          },
     );
-    this.#bar.setAttr("aria-valuenow", String(scrollValue(span, visible)));
   }
 
-  /** The track's length, in CSS pixels: the bar's, which has no padding. */
-  #track(): number {
-    return this.#bar.getBoundingClientRect().width;
+  /** Stops following the track's length, as the editor closes. */
+  dispose(): void {
+    this.#resize.disconnect();
+  }
+
+  /** Shows `shown`, or hides the bar for undefined, unless it is so already. */
+  #show(shown: Shown | undefined): void {
+    const last = this.#shown;
+    if (
+      shown?.left === last?.left &&
+      shown?.width === last?.width &&
+      shown?.value === last?.value
+    ) {
+      return;
+    }
+    this.#shown = shown;
+    this.#bar.toggleClass("is-shown", shown !== undefined);
+    this.#bar.setAttr("aria-hidden", shown === undefined ? "true" : null);
+    if (shown === undefined) return;
+    // As the stylesheet places it, as the drawing area's height is.
+    const { style } = this.#thumb;
+    style.setProperty("--inkline-scroll-thumb-left", `${String(shown.left)}px`);
+    style.setProperty(
+      "--inkline-scroll-thumb-width",
+      `${String(shown.width)}px`,
+    );
+    this.#bar.setAttr("aria-valuenow", String(shown.value));
   }
 
   /** How far along the track the pointer is, in CSS pixels. */
@@ -196,7 +260,11 @@ export class EditorScrollBar {
     return event.clientX - this.#bar.getBoundingClientRect().left;
   }
 
-  /** Ends any drag of the thumb, letting go of the pointer it captured. */
+  /**
+   * Ends any drag of the thumb, letting go of the pointer it captured, and
+   * shows the bar for what it spans without the drag, which can move the
+   * thumb or hide the bar.
+   */
   #endDrag(): void {
     const drag = this.#drag;
     if (drag === undefined) return;
@@ -205,6 +273,7 @@ export class EditorScrollBar {
     if (this.#bar.hasPointerCapture(drag.pointerId)) {
       this.#bar.releasePointerCapture(drag.pointerId);
     }
+    this.update();
   }
 
   #listen(): void {
@@ -215,9 +284,7 @@ export class EditorScrollBar {
       // The focus stays where it was, so that the editor's keys go on
       // working, and the press neither selects nor drags anything else.
       event.preventDefault();
-      const visible = this.#host.visible();
-      const track = this.#track();
-      const thumb = thumbOf(span, visible, track);
+      const thumb = thumbOf(span, this.#host.visible(), this.#track);
       const at = this.#along(event);
       const onThumb = at >= thumb.left && at <= thumb.left + thumb.width;
       // A press on the track brings the thumb's middle to it, and the drag
@@ -246,10 +313,9 @@ export class EditorScrollBar {
     if (drag === undefined) return;
     const visible = this.#host.visible();
     const across = visible.right - visible.left;
-    const track = this.#track();
-    const { width } = thumbOf(drag.span, visible, track);
+    const { width } = thumbOf(drag.span, visible, this.#track);
     this.#host.moveTo(
-      viewAt(drag.span, across, track, {
+      viewAt(drag.span, across, this.#track, {
         left: this.#along(event) - drag.grip,
         width,
       }),
