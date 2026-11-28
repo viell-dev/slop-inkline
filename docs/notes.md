@@ -202,6 +202,19 @@ card, a click on a picture opens Obsidian's image viewer, and in a callout in
 Live Preview a click shows the callout as text, so the second click lands
 elsewhere. There, right-click the symbol for **Edit symbol**.
 
+**Unreleased:** Obsidian's image viewer, which shows a picture at its full size,
+no longer opens on a symbol, which is made to be read at the size of the text
+around it: not on a click in Reading view, embedded notes, hover previews, and a
+focused canvas card, nor in Live Preview on a click on a symbol already
+selected, or on Space. A click there does nothing else, and in Live Preview a
+symbol a click selected stays selected. So a double-click opens a symbol in
+those places too, a selected one included, and a focused card's text does not
+open. In a callout in Live Preview, a click still shows the callout as text:
+right-click the symbol there for **Edit symbol**. Every other picture opens the
+viewer as before, and once Inkline is off, so do symbols. The viewer opened on
+another picture still goes through the note's symbols too, as
+[Known limits](./limits.md#in-general) says.
+
 A symbol with a large base layer takes a moment to open, and a notice says so.
 Obsidian goes on answering meanwhile, so a key you press still reaches the note
 until the editor is there. Asking for the same symbol again changes nothing, and

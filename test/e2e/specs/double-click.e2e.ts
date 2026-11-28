@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { Key } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
 import { encodePng } from "../../support/png.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
@@ -44,6 +45,8 @@ const reading = ".workspace-leaf.mod-active .markdown-reading-view";
 const symbolInText = `${live} .cm-line img.inkline-symbol`;
 // By its file, as the symbols are pictures too while Inkline is off.
 const photoInText = `${live} .cm-line img[src*="photo.png"]`;
+const photoInReading = `${reading} p img[src*="photo.png"]`;
+const embed = note.indexOf("![[One.ink.png]]");
 
 /**
  * Long enough for a second opening of the editor, or Obsidian's image viewer,
@@ -99,6 +102,16 @@ async function editors(): Promise<number> {
 /** Whether Obsidian's image viewer is open. */
 async function viewerOpen(): Promise<boolean> {
   return browser.execute(() => document.querySelector(".lightbox") !== null);
+}
+
+/**
+ * Whether Obsidian's image viewer opens in Live Preview here. It calls
+ * `URL.parse` there, which Chromium has from 126 on: on the oldest installer
+ * the suite runs, with Chromium 120, it throws instead, for any picture, and
+ * Space on a selected picture then also types a space into the note.
+ */
+async function viewerOpensInEditor(): Promise<boolean> {
+  return browser.execute(() => typeof Reflect.get(URL, "parse") === "function");
 }
 
 /** Closes Obsidian's image viewer, if it is open. */
@@ -237,6 +250,56 @@ async function twoClicksApart(
   return { viewer: await viewerOpen(), editors: await editors() };
 }
 
+/**
+ * Whether Live Preview has selected the picture `selector` finds, as a click
+ * on it leaves it: the mark Obsidian puts on the selected picture's embed,
+ * which Inkline reads to tell a click that would open the image viewer.
+ */
+async function selected(selector: string): Promise<boolean> {
+  return browser.execute(
+    (wanted) =>
+      document
+        .querySelector(wanted)
+        ?.parentElement?.closest(".image-embed")
+        ?.classList.contains("is-selected") === true,
+    selector,
+  );
+}
+
+/** Clicks at `point` with `key` held. */
+async function clickHolding(point: Point, key: string): Promise<void> {
+  const keyboard = browser
+    .action("key")
+    .down(key)
+    .pause(0)
+    .pause(0)
+    .pause(0)
+    .up(key);
+  const pointer = browser
+    .action("pointer", { parameters: { pointerType: "mouse" } })
+    .pause(0)
+    .move(point)
+    .down({ button: 0 })
+    .up({ button: 0 })
+    .pause(0);
+  await browser.actions([keyboard, pointer]);
+}
+
+/**
+ * The active note's selections as offsets from the start of `embed`, the
+ * embed a click went to, to compare a symbol's with a picture's.
+ */
+async function selectionsFrom(
+  embed: string,
+): Promise<{ anchor: number; head: number }[]> {
+  const { text, selections } = await noteState();
+  const from = text.indexOf(embed);
+  return selections.map(({ anchor, head }) => ({
+    anchor: anchor - from,
+    head: head - from,
+  }));
+}
+
 describe("Double-clicking a symbol", function () {
   // An editor, a menu, or the image viewer a test leaves open would take the
   // next one's clicks.
@@ -317,29 +380,129 @@ describe("Double-clicking a symbol", function () {
       // at the embed, as a single click does.
       const after = await noteState();
       expect(after.text).toBe(before.text);
-      const embed = note.indexOf("![[One.ink.png]]");
       expect(after.selections).toEqual([{ anchor: embed, head: embed }]);
     });
 
-    it("keeps a single click, and a click after it, as on a picture", async function () {
+    it("opens a symbol already selected, once, with no image viewer", async function () {
+      // A click on a selected picture opens Obsidian's image viewer, and so
+      // took a double-click's first click on a selected symbol (#446).
+      await open("Double.md", "live");
+      const before = await noteState();
+      const symbol = await placeOf(symbolInText);
+      await click(symbol);
+      await browser.pause(apartMs);
+      expect(await selected(symbolInText)).toBe(true);
+      await doubleClick(symbol);
+      expect(await editorName()).toBe("One");
+      await browser.pause(settleMs);
+      expect(await editors()).toBe(1);
+      expect(await viewerOpen()).toBe(false);
+      await closeEditor();
+      const after = await noteState();
+      expect(after.text).toBe(before.text);
+      expect(after.selections).toEqual([{ anchor: embed, head: embed }]);
+    });
+
+    it("keeps a single click, and opens no image viewer on a selected symbol", async function () {
       await open("Double.md", "live");
       await click(await placeOf(symbolInText));
       await browser.pause(settleMs);
       expect(await editors()).toBe(0);
-      const embed = note.indexOf("![[One.ink.png]]");
       expect((await noteState()).selections).toEqual([
         { anchor: embed, head: embed },
       ]);
-      // A click on the selected picture does what Obsidian does with it, as
-      // opening its viewer in later versions, for a symbol as for a photo.
+      expect(await selected(symbolInText)).toBe(true);
+      // A click on the selected symbol does nothing, and leaves it selected,
+      // while one on a selected photo opens the viewer, as Obsidian does.
+      const viewer = await viewerOpensInEditor();
       await open("Double.md", "live");
-      const symbol = await twoClicksApart(await placeOf(symbolInText));
-      await closeViewer();
+      expect(await twoClicksApart(await placeOf(symbolInText))).toEqual({
+        viewer: false,
+        editors: 0,
+      });
+      expect((await noteState()).selections).toEqual([
+        { anchor: embed, head: embed },
+      ]);
+      expect(await selected(symbolInText)).toBe(true);
       await open("Double.md", "live");
-      const photo = await twoClicksApart(await placeOf(photoInText));
+      expect(await twoClicksApart(await placeOf(photoInText))).toEqual({
+        viewer,
+        editors: 0,
+      });
       await closeViewer();
-      expect(symbol).toEqual(photo);
-      expect(symbol.editors).toBe(0);
+    });
+
+    it("keeps Space from opening the image viewer on a selected symbol, and the other keys", async function () {
+      await open("Double.md", "live");
+      const before = await noteState();
+      await click(await placeOf(symbolInText));
+      await browser.pause(settleMs);
+      expect(await selected(symbolInText)).toBe(true);
+      await browser.keys([Key.Space]);
+      await browser.pause(settleMs);
+      expect(await viewerOpen()).toBe(false);
+      const after = await noteState();
+      expect(after.text).toBe(before.text);
+      expect(after.selections).toEqual([{ anchor: embed, head: embed }]);
+      expect(await selected(symbolInText)).toBe(true);
+      // Enter still shows the link's file name, selected, to change it.
+      await browser.keys([Key.Enter]);
+      await browser.waitUntil(
+        async () => (await noteState()).selected === "One.ink.png",
+      );
+      expect((await noteState()).text).toBe(before.text);
+      // Space on a selected photo opens the viewer, as Obsidian does where
+      // its viewer opens, and would type a space into the note elsewhere.
+      if (!(await viewerOpensInEditor())) return;
+      await open("Double.md", "live");
+      await click(await placeOf(photoInText));
+      await browser.pause(settleMs);
+      expect(await selected(photoInText)).toBe(true);
+      await browser.keys([Key.Space]);
+      await browser.$(".lightbox").waitForExist();
+      await closeViewer();
+      expect((await noteState()).text).toBe(before.text);
+    });
+
+    it("keeps a click with Shift or Ctrl as on a picture, but for the image viewer", async function () {
+      const viewer = await viewerOpensInEditor();
+      for (const key of [Key.Shift, Key.Ctrl]) {
+        /**
+         * What a click with `key` on `selector` does, and then another on
+         * it selected, apart.
+         */
+        const outcome = async (
+          selector: string,
+          embedText: string,
+        ): Promise<{
+          selections: { anchor: number; head: number }[];
+          selected: boolean;
+          editors: number;
+          viewers: boolean[];
+        }> => {
+          await open("Double.md", "live");
+          const place = await placeOf(selector);
+          await clickHolding(place, key);
+          await browser.pause(settleMs);
+          const first = await viewerOpen();
+          const found = {
+            selections: await selectionsFrom(embedText),
+            selected: await selected(selector),
+            editors: await editors(),
+          };
+          await browser.pause(apartMs);
+          await clickHolding(place, key);
+          await browser.pause(settleMs);
+          const second = await viewerOpen();
+          await closeViewer();
+          return { ...found, viewers: [first, second] };
+        };
+        const symbol = await outcome(symbolInText, "![[One.ink.png]]");
+        const photo = await outcome(photoInText, "![[photo.png|120]]");
+        expect(symbol).toEqual({ ...photo, viewers: [false, false] });
+        expect(photo.viewers).toEqual([false, viewer]);
+        expect(symbol.editors).toBe(0);
+      }
     });
 
     it("leaves a double-click on a picture or on words as it was", async function () {
@@ -424,16 +587,27 @@ describe("Double-clicking a symbol", function () {
     });
 
     it("stops once Inkline is off", async function () {
-      await open("Double.md", "live");
-      await obsidianPage.disablePlugin("inkline");
-      try {
-        // Marked as a symbol still, for a listener left behind to answer.
+      /** Marks the picture of One as a symbol still, for a listener left. */
+      const markAsSymbol = async (root: string): Promise<void> => {
         await browser.execute((selector) => {
           document.querySelector(selector)?.classList.add("inkline-symbol");
-        }, `${live} .cm-line img[alt="One.ink.png"]`);
+        }, `${root} img[alt="One.ink.png"]`);
+      };
+      const viewer = await viewerOpensInEditor();
+      await obsidianPage.disablePlugin("inkline");
+      try {
+        // An ordinary picture again: the second click opens the viewer.
+        await open("Double.md", "live");
+        await markAsSymbol(`${live} .cm-line`);
         await doubleClick(await placeOf(symbolInText));
         await browser.pause(settleMs);
         expect(await editors()).toBe(0);
+        expect(await viewerOpen()).toBe(viewer);
+        await closeViewer();
+        await open("Double.md", "preview");
+        await markAsSymbol(`${reading} p`);
+        await click(await placeOf(`${reading} p img.inkline-symbol`));
+        await browser.$(".lightbox").waitForExist();
         await closeViewer();
       } finally {
         await obsidianPage.enablePlugin("inkline");
@@ -488,31 +662,55 @@ describe("Double-clicking a symbol", function () {
     });
   });
 
-  describe("where Obsidian answers the first click", function () {
-    /** Double-clicks `selector`, and checks that no editor opened. */
-    async function leftAlone(selector: string): Promise<void> {
-      await doubleClick(await placeOf(selector));
+  describe("where a click opens Obsidian's image viewer on a picture", function () {
+    /**
+     * Clicks `selector`, a symbol, and checks that nothing opened, then
+     * double-clicks it, and checks that it opened in the editor, once, as
+     * `name`, with no image viewer.
+     */
+    async function opensOnce(selector: string, name: string): Promise<void> {
+      const symbol = await placeOf(selector);
+      await click(symbol);
       await browser.pause(settleMs);
+      expect(await viewerOpen()).toBe(false);
       expect(await editors()).toBe(0);
-      await closeViewer();
+      await browser.pause(apartMs);
+      await doubleClick(symbol);
+      expect(await editorName()).toBe(name);
+      await browser.pause(settleMs);
+      expect(await editors()).toBe(1);
+      expect(await viewerOpen()).toBe(false);
+      await closeEditor();
     }
 
-    it("leaves Reading view and embedded notes to Obsidian's image viewer", async function () {
-      // A click opens the viewer there, on a symbol as on any picture, so the
-      // second click lands in the viewer.
+    it("opens a symbol in Reading view and in embedded notes", async function () {
+      // A click on any other picture opens the viewer there, as before.
       await open("Double.md", "preview");
-      await click(await placeOf(`${reading} p img.inkline-symbol`));
+      await click(await placeOf(photoInReading));
       await browser.$(".lightbox").waitForExist();
       await closeViewer();
-      await leftAlone(`${reading} p img.inkline-symbol`);
-      await leftAlone(`${reading} table img.inkline-symbol`);
+      await opensOnce(`${reading} p img.inkline-symbol`, "One");
+      await opensOnce(`${reading} table img.inkline-symbol`, "Two");
       await open("Host.md", "preview");
-      await leftAlone(`${reading} .markdown-embed p img.inkline-symbol`);
+      await opensOnce(`${reading} .markdown-embed p img.inkline-symbol`, "One");
       await open("Host.md", "live");
-      await leftAlone(`${live} .markdown-embed p img.inkline-symbol`);
+      await opensOnce(`${live} .markdown-embed p img.inkline-symbol`, "One");
     });
 
-    it("leaves a hover preview to Obsidian's image viewer", async function () {
+    it("opens no image viewer on a click with a key held in Reading view", async function () {
+      await open("Double.md", "preview");
+      for (const key of [Key.Shift, Key.Ctrl]) {
+        await clickHolding(
+          await placeOf(`${reading} p img.inkline-symbol`),
+          key,
+        );
+        await browser.pause(settleMs);
+        expect(await viewerOpen()).toBe(false);
+        expect(await editors()).toBe(0);
+      }
+    });
+
+    it("opens a symbol in a hover preview", async function () {
       await open("Linker.md", "preview");
       const link = await placeOf(`${reading} a.internal-link`);
       await browser
@@ -524,7 +722,7 @@ describe("Double-clicking a symbol", function () {
         .$(".hover-popover img.inkline-symbol", { strict: false })
         .waitForExist();
       try {
-        await leftAlone(".hover-popover p img.inkline-symbol");
+        await opensOnce(".hover-popover p img.inkline-symbol", "One");
       } finally {
         // The preview goes once the pointer leaves it.
         await browser
@@ -535,16 +733,29 @@ describe("Double-clicking a symbol", function () {
       }
     });
 
-    it("leaves a callout in Live Preview, which shows its text on a click", async function () {
-      await open("Double.md", "live");
-      await leftAlone(`${live} .cm-callout img.inkline-symbol`);
-    });
-
-    it("leaves a focused card on a canvas to Obsidian's image viewer", async function () {
+    it("opens a symbol in a focused card on a canvas, instead of the card's text", async function () {
       await openCanvas("Board.canvas");
       await click(await placeInCard("Plain words", "p"));
       await browser.$(".canvas-node.is-focused").waitForExist();
-      await leftAlone(".canvas-node.is-focused img.inkline-symbol");
+      await opensOnce(".canvas-node.is-focused img.inkline-symbol", "One");
+      expect(await browser.$(".canvas-node.is-editing").isExisting()).toBe(
+        false,
+      );
+      expect(await browser.$(".canvas-node.is-focused").isExisting()).toBe(
+        true,
+      );
+    });
+  });
+
+  describe("where Obsidian answers the first click otherwise", function () {
+    it("leaves a callout in Live Preview, which shows its text on a click", async function () {
+      await open("Double.md", "live");
+      await doubleClick(
+        await placeOf(`${live} .cm-callout img.inkline-symbol`),
+      );
+      await browser.pause(settleMs);
+      expect(await editors()).toBe(0);
+      expect(await viewerOpen()).toBe(false);
     });
   });
 });
