@@ -394,6 +394,7 @@ describe("Double-clicking a symbol", function () {
       expect(await selected(symbolInText)).toBe(true);
       await doubleClick(symbol);
       expect(await editorName()).toBe("One");
+      await saveScreenshot("double-click-selected");
       await browser.pause(settleMs);
       expect(await editors()).toBe(1);
       expect(await viewerOpen()).toBe(false);
@@ -666,9 +667,13 @@ describe("Double-clicking a symbol", function () {
     /**
      * Clicks `selector`, a symbol, and checks that nothing opened, then
      * double-clicks it, and checks that it opened in the editor, once, as
-     * `name`, with no image viewer.
+     * `name`, with no image viewer, saving a screenshot as `shot` if given.
      */
-    async function opensOnce(selector: string, name: string): Promise<void> {
+    async function opensOnce(
+      selector: string,
+      name: string,
+      shot?: string,
+    ): Promise<void> {
       const symbol = await placeOf(selector);
       await click(symbol);
       await browser.pause(settleMs);
@@ -677,6 +682,7 @@ describe("Double-clicking a symbol", function () {
       await browser.pause(apartMs);
       await doubleClick(symbol);
       expect(await editorName()).toBe(name);
+      if (shot !== undefined) await saveScreenshot(shot);
       await browser.pause(settleMs);
       expect(await editors()).toBe(1);
       expect(await viewerOpen()).toBe(false);
@@ -689,7 +695,11 @@ describe("Double-clicking a symbol", function () {
       await click(await placeOf(photoInReading));
       await browser.$(".lightbox").waitForExist();
       await closeViewer();
-      await opensOnce(`${reading} p img.inkline-symbol`, "One");
+      await opensOnce(
+        `${reading} p img.inkline-symbol`,
+        "One",
+        "double-click-reading",
+      );
       await opensOnce(`${reading} table img.inkline-symbol`, "Two");
       await open("Host.md", "preview");
       await opensOnce(`${reading} .markdown-embed p img.inkline-symbol`, "One");
@@ -722,7 +732,11 @@ describe("Double-clicking a symbol", function () {
         .$(".hover-popover img.inkline-symbol", { strict: false })
         .waitForExist();
       try {
-        await opensOnce(".hover-popover p img.inkline-symbol", "One");
+        await opensOnce(
+          ".hover-popover p img.inkline-symbol",
+          "One",
+          "double-click-hover",
+        );
       } finally {
         // The preview goes once the pointer leaves it.
         await browser
