@@ -368,6 +368,12 @@ must keep released files readable and looking the same, as
   often as the pieces the format defines cover it, share no edge, and add no
   corner, on corners on one line too
   ([outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts)).
+- **Unreleased:** A polygon being placed is in the draft as the open shape its
+  corners make, as Save would make it; Esc drops it, and Undo brings it back,
+  kept in the draft again; and the close button leaves it as it is and asks
+  about it as unsaved work, where **Keep drawing** goes back to it
+  ([#489](https://github.com/viell-dev/slop-inkline/issues/489))
+  ([polygon.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/polygon.e2e.ts)).
 - **Unreleased:** A path placed with the mouse and the keys, of corners clicked
   and smooth points dragged out, on the grid with Shift and off it, is saved as
   one stroke without a kind through points along its curve no more than a pixel
@@ -375,20 +381,24 @@ must keep released files readable and looking the same, as
   along the curve and none on the straight line between its ends, matching a
   redraw of its record. While it is placed, the next curve follows the pointer
   after a drag as after a click, and pointing at the first point shows the
-  filled shape a click there makes; Undo takes back a point and a drag, Esc and
-  the close button drop it, and a point and a handle's end dragged move the
-  curve. Enter or a click on the last point ends it, and a click on its first
-  point closes it, filled with **Toggle fill**, and it is not ink yet: no curve
-  follows the pointer, its controls stay, and the status line says how to finish
-  it, again at a press beside it, which places and draws nothing. A click on its
-  first or last point then closes or ends nothing, a point dragged moves it, a
-  closed one's too, and Undo takes back the drag and then the ending, back to
-  placing; Esc and the close button drop it, and Enter again, **Finish path**,
-  another shape, Mod+S, and **Next** make it ink, **Next** keeping Path on and a
-  closed path saved closed. Afterwards one Undo takes back all of it. The
-  eraser's path takes away the ink along its curve, Flat ends cuts an end Shift
-  put on a row, and the symbol reopened holds the same strokes, with nothing
-  left to place
+  filled shape a click there makes; Undo takes back a point and a drag, and a
+  point and a handle's end dragged move the curve. Enter or a click on the last
+  point ends it, and a click on its first point closes it, filled with **Toggle
+  fill**, and it is not ink yet: no curve follows the pointer, its controls
+  stay, and the status line says how to finish it, again at a press beside it,
+  which places and draws nothing. A click on its first or last point then closes
+  or ends nothing, a point dragged moves it, a closed one's too, and Undo takes
+  back the drag and then the ending, back to placing. Placed or waiting, the
+  draft holds it as the stroke it becomes, as adjusted, so that a restart of
+  Obsidian brings it back as ink, and so does turning Inkline off. Esc drops it,
+  and Undo brings it back as it was, waiting or not; the close button and a
+  click outside the editor leave it as it is and ask about it as unsaved work,
+  where **Keep drawing** goes back to it and says how to finish or drop it, and
+  **Save** makes it ink and saves. Enter again, **Finish path**, another shape,
+  Mod+S, and **Next** make it ink, **Next** keeping Path on and a closed path
+  saved closed. Afterwards one Undo takes back all of it. The eraser's path
+  takes away the ink along its curve, Flat ends cuts an end Shift put on a row,
+  and the symbol reopened holds the same strokes, with nothing left to place
   ([path.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/path.e2e.ts)).
   **Zoom** pressed while a path's handle is dragged waits for its release, and
   the path saves the points it would without Zoom
@@ -398,10 +408,14 @@ must keep released files readable and looking the same, as
   step of placing, from a press and a drag to a click on a point, what the
   pointer shows after a drag, which point a press takes where points lie on one
   another, how near a press must be, Shift on the grid, ending and closing, what
-  a press, a click, and a drag do once it has, Undo, what makes it ink, and a
-  save moving the drawing
+  a press, a click, and a drag do once it has, Undo, what makes it ink, a save
+  moving the drawing, the ink a draft keeps of it and of a polygon being placed,
+  which is what ending it commits, what Undo brings back after Esc and what
+  forgets it, and a cancelled press, which takes back only what it did
   ([path.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/path.test.ts),
-  [session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
+  [session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)),
+  and that the draft kept as it waits is restored as that ink
+  ([keeping.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/keeping.test.ts)).
 - A view that adds each stroke to what it has drawn and measured shows what a
   new view does, pixel for pixel on the surface and in the preview, at full size
   and at 16 px, and the image's ends are exactly those of a full measurement,

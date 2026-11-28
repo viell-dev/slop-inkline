@@ -97,11 +97,15 @@ triangle, a rectangle, or a lightning bolt. Click where each corner goes; the
 next side follows the pointer from the last corner. Click the first corner again
 to close the shape, or click the last corner again, as a double-click does, or
 press Enter, to leave it open. Undo (Mod+Z) takes back the last corner, and Esc
-drops the shape; so does the close button, before it closes the editor, and
-Clear, with the rest of the drawing. A press dragged before its release puts the
-corner where it is released. The shape draws with the pen or the eraser at its
-brush size; choosing another while placing it changes the whole shape. Press
-**Polygon** again to draw freehand; **Next** keeps it on.
+drops the shape, as does Clear, with the rest of the drawing. In Inkline 1.0.2,
+so does the close button, before it closes the editor. **Unreleased:** Undo
+brings back a shape that Esc dropped, until you draw or change anything else,
+and the close button, or a click outside the editor, leaves the shape as it is
+and asks whether to save, as for any unsaved change; saving makes it ink with
+the corners it has. A press dragged before its release puts the corner where it
+is released. The shape draws with the pen or the eraser at its brush size;
+choosing another while placing it changes the whole shape. Press **Polygon**
+again to draw freehand; **Next** keeps it on.
 
 Its corners are sharp on the outer side. A very sharp corner, under about 29°,
 has its point cut off square twice the stroke's width past the corner, so that
@@ -160,11 +164,19 @@ with round ends.
   still place it, with the points it has, leaving it open.
 - Undo (Mod+Z) takes back the last point placed or the last drag, then the
   ending or closing, back to placing the path, and the path with its first
-  point. Esc drops the path, before it is ink; so does the close button, before
-  it closes the editor, and Clear, with the rest of the drawing. Choosing the
-  pen, the eraser, or a brush size meanwhile changes the whole path; choosing
-  another shape, Save, or **Next** makes it ink with the points it has, open, or
-  closed if you closed it.
+  point. Esc drops the path, before it is ink, and Undo brings it back as it
+  was, waiting or not, until you draw or change anything else; Clear drops it
+  with the rest of the drawing. The close button, or a click outside the editor,
+  leaves it as it is and asks whether to save, as for any unsaved change:
+  **Save** makes it ink as it is, and **Keep drawing** goes back to it, with the
+  status line saying how to finish it or drop it. Choosing the pen, the eraser,
+  or a brush size meanwhile changes the whole path; choosing another shape,
+  Save, or **Next** makes it ink with the points it has, open, or closed if you
+  closed it.
+- Until it is ink, the draft that the editor keeps in case of a crash holds the
+  path as the ink it would become, as adjusted so far, so closing Obsidian or a
+  crash doesn't lose it: restoring the draft brings it back as ink, as
+  [Saving and recovery](./recovery.md#drafts-after-a-crash) describes.
 
 Once it is ink, a path is like any other stroke: one Undo takes all of it back,
 the eraser takes away from it, and its points and handles can't be moved again.

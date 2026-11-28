@@ -317,6 +317,11 @@ export class PathPlacer {
     return this.#state;
   }
 
+  /** Whether a press holds a point or a handle's end, or one it placed. */
+  get held(): boolean {
+    return this.#grip !== undefined;
+  }
+
   /**
    * A press: on a point or a handle's end within `reach`, taking hold of it;
    * anywhere else, placing a point there while the path is being placed.
@@ -428,12 +433,21 @@ export class PathPlacer {
    */
   end(): void {
     if (this.#state !== "placing") return;
+    this.letGoAsShown();
+    this.#endAs("ended");
+  }
+
+  /**
+   * Lets go of a press being held as it shows, as its release would leave it
+   * but for closing or ending the path, so that what it placed or dragged
+   * stays a step of its own, and its release then does nothing.
+   */
+  letGoAsShown(): void {
     const grip = this.#grip;
     if (grip !== undefined && (grip.kind === "new" || this.#dragging)) {
-      this.#steps.push({ nodes: this.#before, state: "placing" });
+      this.#steps.push({ nodes: this.#before, state: this.#state });
     }
     this.#letGo();
-    this.#endAs("ended");
   }
 
   /** Ends or closes a path being placed, as a step that undo takes back. */

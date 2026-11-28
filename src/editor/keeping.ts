@@ -603,13 +603,12 @@ export class Keeping {
       this.forgetDraft();
       return true;
     }
-    const { document } = this.#session;
     const kept = drafts.store.put(this.#draft(drafts.target(), pending));
     if (!kept && this.#draftKept) {
       // The latest changes stay unkept until a draft is kept again.
       this.#host.say("Draft not kept", () => !this.#draftKept);
       this.#host.notice(
-        parseRecord(serializeRecord(document)).ok
+        parseRecord(serializeRecord(this.#kept)).ok
           ? "Inkline could not keep a draft of the latest changes, because the vault's local storage refused it. Save the symbol to keep them."
           : "Inkline could not keep a draft of the latest changes, because they take the drawing past what a symbol can hold. Undo them to save it.",
       );
@@ -626,6 +625,20 @@ export class Keeping {
   }
 
   /**
+   * The drawing as a draft keeps it: with a polygon or a path being placed,
+   * or a path waiting to be made ink, as the ink it would be, as saving makes
+   * it, so that closing Obsidian or a crash loses none of it (#489). It is
+   * kept again at each step that changes it, as at a point placed, a drag let
+   * go, or Undo, not as the pointer drags a point, which no draft keeps up
+   * with. A stroke being dragged is not in it until it is let go.
+   */
+  get #kept(): InkDocument {
+    const { document, placedStrokes } = this.#session;
+    if (placedStrokes.length === 0) return document;
+    return { ...document, strokes: [...document.strokes, ...placedStrokes] };
+  }
+
+  /**
    * This editor's drawing as its draft for `target`. While the file may hold
    * the drawing as it was or as a save writes it, the draft is `pending`, and
    * keeps its own base layer, so that it does not depend on which version the
@@ -634,7 +647,8 @@ export class Keeping {
    * not show, until the first save starts writing.
    */
   #draft(target: DraftTarget, pending: boolean): Draft {
-    const { document, saved } = this.#session;
+    const { saved } = this.#session;
+    const document = this.#kept;
     // A draft opened as a new symbol is still for its old symbol until the
     // first save gives it a file of its own, as the editor then holds that
     // file, or names another path: this one takes its place there, during a
