@@ -117,9 +117,10 @@ too:
 2. Download the newer release's install ZIP and extract it outside the vault.
    From its `inkline/` folder, copy only the three plugin files, `main.js`,
    `manifest.json`, and `styles.css`, into the vault's existing
-   `.obsidian/plugins/inkline/` folder, replacing the files there, and keep
-   `data.json`, which holds your settings. For a loose-file installation,
-   download those three files from the release and copy them in the same way.
+   `plugins/inkline/` folder, in `.obsidian/` or the vault's own configuration
+   directory, replacing the files there, and keep `data.json`, which holds your
+   settings. For a loose-file installation, download those three files from the
+   release and copy them in the same way.
 
    ::: warning Keep data.json
 
@@ -130,9 +131,14 @@ too:
 
    :::
 
-3. Turn Inkline on again, or restart Obsidian.
+3. Turn Inkline on again under **Settings → Community plugins**.
 
 Your drawings remain ordinary PNG attachments in the vault.
+
+To go back to an earlier release, as from a pre-release to the latest public
+release, follow the same steps with that release's three files, keeping
+`data.json`. Each pre-release's notes say whether the symbols it saves open in
+the public release before it.
 
 **Updating from a version before 0.9.2:** the file format became final in 0.9.2,
 and Inkline no longer reads the strokes of earlier files. Your symbols and the

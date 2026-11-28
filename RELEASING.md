@@ -668,11 +668,12 @@ Obsidian hosts:
 2. Draw, save, and reopen a synthetic symbol. Save a preference, turn Inkline
    off and on, and confirm the drawing and preference survive.
 3. For an update, start from the actual previous release, save a synthetic
-   drawing and preference, turn Inkline off, and extract the new ZIP into the
-   same plugins directory. Replace only the three plugin files, preserving
-   `data.json` and vault attachments; turn Inkline on and recheck both. From a
-   release before `0.9.2`, the drawing's file and look stay, and it opens as a
-   picture to draw over, as [the goal](#the-stable-release-goal) allows.
+   drawing and preference, turn Inkline off, extract the new ZIP outside the
+   vault, and copy only its three plugin files into the plugin's folder, as the
+   [install guide's Update](docs/install.md#update) says, preserving `data.json`
+   and vault attachments; turn Inkline on and recheck both. From a release
+   before `0.9.2`, the drawing's file and look stay, and it opens as a picture
+   to draw over, as [the goal](#the-stable-release-goal) allows.
 4. Record the release commit, Obsidian versions, checksums, attestation and
    installation/update results, and evidence limits in the release PR. Never
    invent or modify a published release to simulate an upgrade.
