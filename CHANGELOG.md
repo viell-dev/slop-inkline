@@ -11,6 +11,13 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- **Zoom**'s scroll bar keeps its thumb under the pointer for the whole of a
+  drag. In a drag begun with the view moved off the drawing, by the wheel or the
+  arrow keys, the thumb stayed at the end of its track while the pointer went
+  on, or the bar went before the drag ended, though the view moved as it should.
+  Screen readers also name the bar now, for the drawing area, where they read
+  only that it was a scroll bar
+  ([#490](https://github.com/viell-dev/slop-inkline/issues/490)).
 - A path waiting for **Finish path**, or still being placed, and a polygon still
   being placed, were in no draft, so closing Obsidian or a crash lost them with
   every adjustment, and the close button or a click outside the editor dropped

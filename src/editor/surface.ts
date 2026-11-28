@@ -209,14 +209,19 @@ export class EditorSurface {
       attr: { "aria-hidden": "true" },
     });
     this.#cursor.hide();
-    this.#scroll = new EditorScrollBar(drawing, surfaceId, {
-      visible: () => this.#view.visible,
-      moveTo: (center) => {
-        options.line.act(() => {
-          this.#moveAlong(center - this.#view.center);
-        });
+    this.#scroll = new EditorScrollBar(
+      drawing,
+      { controls: surfaceId, label: options.labelId },
+      {
+        visible: () => this.#view.visible,
+        image: () => this.#view.inkedImage,
+        moveTo: (center) => {
+          options.line.act(() => {
+            this.#moveAlong(center - this.#view.center);
+          });
+        },
       },
-    });
+    );
     // The wheel moves along the drawing over the bar too, as over the area.
     this.#scroll.element.addEventListener(
       "wheel",
@@ -285,6 +290,7 @@ export class EditorSurface {
     const { win } = this.#view.canvas;
     this.#disposed = true;
     this.#resize?.disconnect();
+    this.#scroll.dispose();
     win.removeEventListener("resize", this.#windowResized);
     win.removeEventListener("resize", this.#resizeCursor);
     win.removeEventListener("keydown", this.#shiftKey, true);
@@ -761,7 +767,7 @@ export class EditorSurface {
         activeStrokes,
         tool === "eraser" && shape !== "free",
       );
-      this.#scroll.show(view.magnified, view.inkedImage, view.visible);
+      this.#scroll.update();
       this.#updateCursor();
       view.drawPreview(
         this.#preview,
