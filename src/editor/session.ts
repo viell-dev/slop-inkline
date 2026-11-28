@@ -25,7 +25,7 @@ import {
   type PathNode,
   type PathPointer,
   type PathReach,
-  type PathRelease,
+  type PathState,
 } from "./path.ts";
 import { sweptStroke } from "./sweep.ts";
 
@@ -639,19 +639,40 @@ export class DrawingSession {
     return this.#active !== undefined;
   }
 
-  /** Whether a polygon or a path is being placed, a point at a time. */
+  /**
+   * Whether a polygon or a path is being placed, a point at a time, a path
+   * that has ended and waits to be made ink too.
+   */
   get placing(): boolean {
     return this.#active?.polygon === true || this.placingPath;
   }
 
-  /** Whether a path is being placed. */
+  /** Whether a path is being placed, or has ended and waits to be made ink. */
   get placingPath(): boolean {
     return this.#active?.path !== undefined;
   }
 
   /**
-   * The points and handles of a path being placed, and what a press would
-   * take hold of, for the drawing area to show; undefined for anything else.
+   * Where a path stands before it is made ink, as {@link PathState} says, or
+   * undefined while there is none.
+   */
+  get pathState(): PathState | undefined {
+    return this.#active?.path?.state;
+  }
+
+  /**
+   * Whether a path has ended or closed, and waits for its points and handles
+   * to be adjusted until it is made ink.
+   */
+  get adjustingPath(): boolean {
+    const state = this.pathState;
+    return state !== undefined && state !== "placing";
+  }
+
+  /**
+   * The points and handles of a path being placed or adjusted, and what a
+   * press would take hold of, for the drawing area to show; undefined for
+   * anything else.
    */
   get pathMarks(): PathMarks | undefined {
     return this.#active?.path?.marks;
@@ -668,8 +689,8 @@ export class DrawingSession {
    * its start if that is on the grid, and its end comes to the grid only as
    * it is let go; but an eraser's sweep is just what {@link end} commits,
    * with the pointer where it is and Shift as the editor last knew it. A
-   * polygon being placed is shown as a click where the pointer is would leave
-   * it.
+   * polygon or a path being placed is shown as a click where the pointer is
+   * would leave it, and a path that has ended as it is.
    */
   get activeStrokes(): readonly Stroke[] {
     const active = this.#active;
@@ -916,25 +937,26 @@ export class DrawingSession {
    * closed loop, with no ends to cut. While a polygon is being placed, a press
    * only moves where its next corner would go, which its release places;
    * while a path is, a press takes hold of a point or a handle's end, or
-   * places a point, as {@link PathPlacer} says.
+   * places a point, as {@link PathPlacer} says. Returns whether the press
+   * does anything: not for one that takes hold of nothing on a path that has
+   * ended and waits to be made ink.
    */
-  begin(point: InputPoint, shift = false): void {
+  begin(point: InputPoint, shift = false): boolean {
     this.#shiftNow = shift;
     const placing = this.#active;
     if (placing?.polygon === true) {
       this.#next = point;
       this.#shift = shift;
-      return;
+      return true;
     }
     if (placing?.path !== undefined) {
       this.#next = point;
       this.#shift = shift;
-      placing.path.press(this.#pathPointer(point), this.#reach(placing));
-      return;
+      return placing.path.press(this.#pathPointer(point), this.#reach(placing));
     }
     if (this.shape === "path") {
       this.#beginPath(point, shift);
-      return;
+      return true;
     }
     const ellipse = this.shape === "ellipse";
     const polygon = this.shape === "polygon";
@@ -976,6 +998,7 @@ export class DrawingSession {
     this.#pointerStraight = false;
     this.#straightStart = false;
     if (polygon) this.#record(this.#active, start);
+    return true;
   }
 
   /**
@@ -1135,8 +1158,10 @@ export class DrawingSession {
    * step, ending it at `release`, where the pointer was let go, when that is
    * known. A polygon being placed takes a release as a corner, and commits
    * only when that closes or ends it; without a release, it commits with the
-   * corners it has, as when saving. A path being placed does the same with
-   * its points.
+   * corners it has, as when saving. A path takes a release as its point, its
+   * move, or its ending or closing, as {@link PathPlacer} says, and so never
+   * commits at a release; without one, it commits with the points it has,
+   * open, or closed if it closed, whether it is being placed or adjusted.
    *
    * Shift counts as held for the release if `shift` says it is down, or if it
    * was at the last press or move: with no move since, what is drawn is what
@@ -1166,22 +1191,20 @@ export class DrawingSession {
     }
     const path = placed?.path;
     if (placed !== undefined && path !== undefined) {
+      if (release === undefined) {
+        this.#commit(
+          this.#pathStrokes(placed, path.nodes, path.state === "closed"),
+        );
+        return;
+      }
       const now = shift ?? false;
       this.#shift ||= now;
       // Shift let go an instant before the button leaves the point or the
       // handle's end on the grid where it was last shown.
       const remembered = this.#shift && !now && this.snap;
-      let outcome: PathRelease = "ended";
-      if (release !== undefined) {
-        const at = remembered ? (this.#next ?? release) : release;
-        this.#next = at;
-        outcome = path.release(this.#pathPointer(at), this.#reach(placed));
-      }
-      if (outcome !== "placing") {
-        this.#commit(
-          this.#pathStrokes(placed, path.nodes, outcome === "closed"),
-        );
-      }
+      const at = remembered ? (this.#next ?? release) : release;
+      this.#next = at;
+      path.release(this.#pathPointer(at), this.#reach(placed));
       return;
     }
     if (placed?.sweep === true && release !== undefined) {
@@ -1210,6 +1233,18 @@ export class DrawingSession {
       });
     }
     this.#takeNextGrid();
+  }
+
+  /**
+   * Ends a path being placed where it is, open, as Enter does: it then waits
+   * for its points and handles to be adjusted until {@link end} makes it ink.
+   * Returns whether there was one being placed.
+   */
+  endPath(): boolean {
+    const path = this.#active?.path;
+    if (path?.state !== "placing") return false;
+    path.end();
+    return true;
   }
 
   /**
@@ -1281,9 +1316,9 @@ export class DrawingSession {
   }
 
   /**
-   * Gives a polygon or a path being placed the tool and brush size chosen
-   * now, as when they change while it is placed; a stroke being dragged keeps
-   * its own.
+   * Gives a polygon or a path being placed, or a path being adjusted, the
+   * tool and brush size chosen now, as when they change meanwhile; a stroke
+   * being dragged keeps its own.
    */
   rebrush(): void {
     const active = this.#active;
@@ -1293,9 +1328,9 @@ export class DrawingSession {
 
   /**
    * Takes back the last corner of the polygon being placed, and the polygon
-   * with its first; or the last step of the path being placed, a point
-   * placed or a drag, or the press being held on it, and the path with its
-   * first point. Returns whether there was one.
+   * with its first; or the last step of the path being placed or adjusted,
+   * a point placed, a drag, or its ending or closing, or the press being held
+   * on it, and the path with its first point. Returns whether there was one.
    */
   undoCorner(): boolean {
     const active = this.#active;
@@ -1345,7 +1380,8 @@ export class DrawingSession {
 
   /**
    * Removes every stroke and the base layer, as one undoable step, and drops
-   * a polygon being placed. A stroke being dragged keeps everything.
+   * a polygon or a path being placed, or a path being adjusted. A stroke
+   * being dragged keeps everything.
    */
   clear(): void {
     if (this.placing) this.cancel();

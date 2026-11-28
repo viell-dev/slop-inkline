@@ -225,12 +225,24 @@ type Grip =
    */
   | (PathTarget & { readonly offset: Point });
 
-/** What a release leaves a path being placed: still placing, or done. */
-export type PathRelease = "placing" | "closed" | "ended";
+/**
+ * Where a path stands before it is made ink: being placed, a point at a time,
+ * with the next curve following the pointer; or ended, open on its last point
+ * or closed on its first, for its points and handles to be adjusted until it
+ * is made ink.
+ */
+export type PathState = "placing" | "ended" | "closed";
+
+/** A path as it was before a step, for {@link PathPlacer.undo}. */
+interface PathStep {
+  readonly nodes: readonly PathNode[];
+  readonly state: PathState;
+}
 
 /**
- * A path as it shows while it is placed: its points, and whether it is
- * closed, as releasing the pointer now, or a click where it is, leaves it.
+ * A path as it shows before it is made ink: its points, and whether it is
+ * closed, as releasing the pointer now, or a click where it is, leaves one
+ * being placed, or as one ended or closed is.
  */
 export interface PathShown {
   readonly nodes: readonly PathNode[];
@@ -238,9 +250,9 @@ export interface PathShown {
 }
 
 /**
- * The controls of a path being placed, for the drawing area to show over the
- * ink: its points and their handles, and what a press would take hold of, or
- * has.
+ * The controls of a path before it is made ink, for the drawing area to show
+ * over the ink: its points and their handles, and what a press would take
+ * hold of, or has.
  */
 export interface PathMarks {
   readonly nodes: readonly PathNode[];
@@ -249,7 +261,7 @@ export interface PathMarks {
 
 /**
  * A path being placed, a point at a time, as the pointer presses, moves, and
- * lets go:
+ * lets go, and then adjusted until it is made ink:
  *
  * - A click places a corner where it is pressed; a press dragged places a
  *   smooth point there, its handle following the pointer, mirrored on the
@@ -258,10 +270,16 @@ export interface PathMarks {
  *   moves it. A point moves with its handle; a handle turns its mirror with
  *   it, and dragged back onto its point leaves a corner.
  * - A click on the first point closes the path, once it has two; a click on
- *   the last point ends it open. A click on any other point or handle's end
- *   places a corner, as a click elsewhere does.
+ *   the last point, or {@link end}, ends it open. A click on any other point
+ *   or handle's end places a corner, as a click elsewhere does.
+ * - Ended or closed, the path waits to be made ink, as {@link state} says:
+ *   no next curve follows the pointer, and a press and a drag on a point or
+ *   a handle's end move it, as before, but a click places nothing and ends
+ *   nothing, and a press that takes hold of nothing does nothing. The
+ *   session makes it ink when asked.
  *
- * Each point placed and each drag is a step that {@link undo} takes back.
+ * Each point placed, each drag, and the ending or closing of the path are
+ * steps that {@link undo} takes back.
  * Shift, with the grid on, puts what the pointer places on the grid, as
  * {@link PathPointer} says, and a press with Shift held takes hold of a point
  * that Shift put on the grid only where it snaps to it. How near a press must
@@ -269,8 +287,9 @@ export interface PathMarks {
  */
 export class PathPlacer {
   #nodes: readonly PathNode[];
-  /** The points before each step, for {@link undo}. */
-  #steps: (readonly PathNode[])[] = [];
+  #state: PathState = "placing";
+  /** The path before each step, for {@link undo}. */
+  #steps: PathStep[] = [];
   #grip: Grip | undefined;
   /** The points before the press that holds {@link #grip}. */
   #before: readonly PathNode[] = [];
@@ -293,21 +312,29 @@ export class PathPlacer {
     return this.#nodes;
   }
 
+  /** Whether the path is being placed, or has ended or closed. */
+  get state(): PathState {
+    return this.#state;
+  }
+
   /**
    * A press: on a point or a handle's end within `reach`, taking hold of it;
-   * anywhere else, placing a point there.
+   * anywhere else, placing a point there while the path is being placed.
+   * Returns whether it did either: not for a press that reaches nothing once
+   * the path has ended or closed.
    */
-  press(pointer: PathPointer, reach: PathReach): void {
+  press(pointer: PathPointer, reach: PathReach): boolean {
     this.#pointer = pointer;
     this.#reach = reach;
+    const target = this.#target(pointer);
+    if (target === undefined && this.#state !== "placing") return false;
     this.#pressed = pointer.at;
     this.#dragging = false;
     this.#before = this.#nodes;
-    const target = this.#target(pointer);
     if (target === undefined) {
       this.#nodes = [...this.#nodes, corner(pointer.placed, pointer.onGrid)];
       this.#grip = { kind: "new", index: this.#nodes.length - 1 };
-      return;
+      return true;
     }
     const node = this.#nodes[target.index];
     const held =
@@ -320,6 +347,7 @@ export class PathPlacer {
       ...target,
       offset: held === undefined ? { x: 0, y: 0 } : subtract(held, pointer.at),
     };
+    return true;
   }
 
   /** The pointer moved, pressed or not. */
@@ -364,27 +392,55 @@ export class PathPlacer {
   }
 
   /**
-   * The press let go here: placing, moving, or, for a click on the first or
-   * last point, closing or ending the path.
+   * The press let go here: placing or moving; or, for a click on the first or
+   * last point of a path being placed, closing or ending it. Returns where
+   * the path stands then.
    */
-  release(pointer: PathPointer, reach: PathReach = this.#reach): PathRelease {
+  release(pointer: PathPointer, reach: PathReach = this.#reach): PathState {
     this.move(pointer, reach);
     const grip = this.#grip;
     const before = this.#before;
     const dragged = this.#dragging;
     this.#letGo();
-    if (grip === undefined) return "placing";
+    if (grip === undefined) return this.#state;
     if (grip.kind === "new" || dragged) {
-      this.#steps.push(before);
-      return "placing";
+      this.#steps.push({ nodes: before, state: this.#state });
+      return this.#state;
     }
+    // A click on a path that has ended or closed changes nothing.
+    if (this.#state !== "placing") return this.#state;
     if (grip.kind === "point") {
-      if (grip.index === 0 && this.#nodes.length >= 2) return "closed";
-      if (grip.index === this.#nodes.length - 1) return "ended";
+      if (grip.index === 0 && this.#nodes.length >= 2) {
+        return this.#endAs("closed");
+      }
+      if (grip.index === this.#nodes.length - 1) return this.#endAs("ended");
     }
-    this.#steps.push(before);
+    this.#steps.push({ nodes: before, state: "placing" });
     this.#nodes = [...this.#nodes, corner(pointer.placed, pointer.onGrid)];
     return "placing";
+  }
+
+  /**
+   * Ends a path being placed open where it is, as Enter does, for adjusting.
+   * A press being held is let go as it shows, as its release would leave it
+   * but for ending or closing the path, so that what it placed or dragged
+   * stays a step of its own, and its release then does nothing.
+   */
+  end(): void {
+    if (this.#state !== "placing") return;
+    const grip = this.#grip;
+    if (grip !== undefined && (grip.kind === "new" || this.#dragging)) {
+      this.#steps.push({ nodes: this.#before, state: "placing" });
+    }
+    this.#letGo();
+    this.#endAs("ended");
+  }
+
+  /** Ends or closes a path being placed, as a step that undo takes back. */
+  #endAs(state: "ended" | "closed"): PathState {
+    this.#steps.push({ nodes: this.#nodes, state: this.#state });
+    this.#state = state;
+    return state;
   }
 
   /**
@@ -397,10 +453,11 @@ export class PathPlacer {
       this.#letGo();
       return this.#nodes.length > 0;
     }
-    const before = this.#steps.pop();
-    if (before === undefined) return false;
-    this.#nodes = before;
-    return before.length > 0;
+    const step = this.#steps.pop();
+    if (step === undefined) return false;
+    this.#nodes = step.nodes;
+    this.#state = step.state;
+    return step.nodes.length > 0;
   }
 
   /**
@@ -420,7 +477,10 @@ export class PathPlacer {
     const point = (at: Point): Point => ({ x: at.x + dx, y: at.y });
     this.#nodes = across(this.#nodes);
     this.#before = across(this.#before);
-    this.#steps = this.#steps.map(across);
+    this.#steps = this.#steps.map(({ nodes, state }) => ({
+      nodes: across(nodes),
+      state,
+    }));
     if (this.#pressed !== undefined) this.#pressed = point(this.#pressed);
     const pointer = this.#pointer;
     if (pointer !== undefined) {
@@ -435,10 +495,14 @@ export class PathPlacer {
   /**
    * The path as releasing the pointer now would leave it, or as a click
    * where the pointer is would: closed on the first point, ended on the
-   * last, or with a corner where the pointer is.
+   * last, or with a corner where the pointer is; or once it has ended or
+   * closed, as it is.
    */
   get shown(): PathShown {
     const nodes = this.#nodes;
+    if (this.#state !== "placing") {
+      return { nodes, closed: this.#state === "closed" };
+    }
     const pointer = this.#pointer;
     const grip = this.#grip;
     if (grip?.kind === "new" || this.#dragging || pointer === undefined) {

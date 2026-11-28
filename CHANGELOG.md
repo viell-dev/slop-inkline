@@ -23,6 +23,17 @@ even one a public release; earlier pre-releases carry a suffix such as
   Inkline is off. The viewer opened on another picture still goes through the
   note's symbols with the arrow keys, as Inkline cannot leave them out of its
   list ([#474](https://github.com/viell-dev/slop-inkline/issues/474)).
+- A path no longer becomes ink as soon as it ends. Ending it, with Enter or a
+  click on its last point, or closing it on its first point, leaves it waiting,
+  open or closed, with no curve following the pointer, for its points and
+  handles to be dragged until it looks right; a click then places nothing, and
+  nothing else is drawn meanwhile. Enter again, or the new **Finish path**
+  button, makes it ink; the button also does while the path is still being
+  placed. Undo takes back each adjustment, then the ending itself, back to
+  placing the path. Choosing another shape, saving, and **Next** make a waiting
+  path ink as they do one being placed, and Esc drops it. Paths are still saved
+  as ordinary strokes
+  ([#476](https://github.com/viell-dev/slop-inkline/issues/476)).
 
 ### Fixed
 
