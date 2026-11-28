@@ -588,11 +588,22 @@ describe("Double-clicking a symbol", function () {
     });
 
     it("stops once Inkline is off", async function () {
-      /** Marks the picture of One as a symbol still, for a listener left. */
+      /**
+       * Marks the picture of One as a symbol still, for a listener left. The
+       * view may still be drawing the note as it opens, so this waits for the
+       * picture rather than marking nothing, which left the click below
+       * waiting for a symbol that never came (#494).
+       */
       const markAsSymbol = async (root: string): Promise<void> => {
-        await browser.execute((selector) => {
-          document.querySelector(selector)?.classList.add("inkline-symbol");
-        }, `${root} img[alt="One.ink.png"]`);
+        await browser.waitUntil(
+          async () =>
+            browser.execute((selector) => {
+              const image = document.querySelector(selector);
+              image?.classList.add("inkline-symbol");
+              return image !== null;
+            }, `${root} img[alt="One.ink.png"]`),
+          { timeoutMsg: `no picture of One in ${root}` },
+        );
       };
       const viewer = await viewerOpensInEditor();
       await obsidianPage.disablePlugin("inkline");
@@ -606,8 +617,11 @@ describe("Double-clicking a symbol", function () {
         expect(await viewerOpen()).toBe(viewer);
         await closeViewer();
         await open("Double.md", "preview");
+        // Where the picture settles, then marked just before the click, so
+        // that a redraw of the note meanwhile cannot take the mark away.
+        const picture = await placeOf(`${reading} p img[alt="One.ink.png"]`);
         await markAsSymbol(`${reading} p`);
-        await click(await placeOf(`${reading} p img.inkline-symbol`));
+        await click(picture);
         await browser.$(".lightbox").waitForExist();
         await closeViewer();
       } finally {
