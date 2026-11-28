@@ -530,7 +530,15 @@ describe("Path", function () {
     // Another tool or shape chosen while placing a path: the eraser takes it
     // over; Polygon ends it with the points it has.
     await click([0.3, 0.2]);
+    expect((await draftStrokes(2))[1]?.tool).toBe("pen");
     await browser.keys("e");
+    // The draft keeps it as the eraser's at once, as it would be ink now.
+    await browser.waitUntil(
+      async () => (await drafted())[1]?.tool === "eraser",
+      {
+        timeoutMsg: "the draft did not take the eraser chosen for the path",
+      },
+    );
     await click([0.5, 0.15]);
     await browser.keys("y");
     await browser.waitUntil(async () => (await pressed("polygon")) === "true");
