@@ -69,9 +69,11 @@ gets the old one's.
   double-click: a later, separate click on the selected image opens its image
   viewer, where Obsidian has one, as it does since 1.13.2, and `+`, `-`, and `0`
   resize it, while a double-click opens the symbol in Inkline's editor instead,
-  as [Edit a symbol](./notes.md#edit-a-symbol) says. A drag that starts on a
-  symbol is Obsidian's drag of an image, which puts a copy of its embed where it
-  ends.
+  as [Edit a symbol](./notes.md#edit-a-symbol) says. **Unreleased:** neither a
+  click on the selected symbol nor Space opens the viewer, nor does a click on a
+  symbol in rendered text, as in Reading view: a symbol is read at the size of
+  the text around it. A drag that starts on a symbol is Obsidian's drag of an
+  image, which puts a copy of its embed where it ends.
 - The attribute `aria-label` with a name, which screen readers read as the
   image's name and Obsidian shows as a tooltip, above the image, once the
   pointer is on it: the text the embed's author wrote for the image, as a wiki
