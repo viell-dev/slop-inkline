@@ -149,18 +149,28 @@ with round ends.
   first, then the last. A click on a point or a handle's end without a drag
   places a point there, except on the first point or the last.
 - Click the first point to close the path, once it has two, or the last point,
-  as a double-click does, or press Enter, to leave it open.
-- Undo (Mod+Z) takes back the last point placed or the last drag, and the path
-  with its first point. Esc drops the path; so does the close button, before it
-  closes the editor, and Clear, with the rest of the drawing. Choosing the pen,
-  the eraser, or a brush size while placing it changes the whole path; choosing
-  another shape, Save, or **Next** ends it with the points it has.
+  as a double-click does, or press Enter, to leave it open. The path is not ink
+  yet: it waits for you to adjust it, and the status line says how to finish it.
+  No curve follows the pointer any more, and you can drag its points and
+  handles' ends as while you placed it, a closed path's too. A click places
+  nothing and ends nothing, and a press away from every point and handle's end
+  draws nothing, so nothing else is drawn until the path is ink.
+- **Finish path** (Enter) makes the path ink. Press Enter again, or the button,
+  once the path has ended or closed. The button also makes a path ink while you
+  still place it, with the points it has, leaving it open.
+- Undo (Mod+Z) takes back the last point placed or the last drag, then the
+  ending or closing, back to placing the path, and the path with its first
+  point. Esc drops the path, before it is ink; so does the close button, before
+  it closes the editor, and Clear, with the rest of the drawing. Choosing the
+  pen, the eraser, or a brush size meanwhile changes the whole path; choosing
+  another shape, Save, or **Next** makes it ink with the points it has, open, or
+  closed if you closed it.
 
-Once it ends, a path is ink like any other stroke: one Undo takes all of it
-back, the eraser takes away from it, and its points and handles can't be moved
-again. It is saved as an ordinary stroke along the curve, so a symbol with paths
-opens and looks the same in earlier versions of Inkline. Press **Path** again to
-draw freehand; **Next** keeps it on.
+Once it is ink, a path is like any other stroke: one Undo takes all of it back,
+the eraser takes away from it, and its points and handles can't be moved again.
+It is saved as an ordinary stroke along the curve, so a symbol with paths opens
+and looks the same in earlier versions of Inkline. Press **Path** again to draw
+freehand; **Next** keeps it on.
 
 With the grid on, a point or a handle's end goes on the grid only if Shift is
 held as you place it: a point as you press, a handle's end, or a point you move,
@@ -306,13 +316,13 @@ The grid, though, has twice as many cells each way while zoomed, so the default
 5 cells across the x-height become 10, for placing fine detail. Every point of
 the usual grid stays a point of the finer one, so a drawing started in either
 view lines up in the other, and zooming out puts the usual grid back where it
-was, however much you drew while zoomed. A polygon being placed, and,
-**Unreleased**, a path, keeps the grid it started on until it ends, and Shift
-with an arrow key moves a picture by a column of the grid shown. **Grid size**
-keeps its range of 2 to 10, and saved symbols are not affected. On a symbol you
-open again, the usual grid follows the ends you placed with Shift, so after
-placing them mostly on points of the finer grid alone it can lie half a cell
-from where it was; the finer grid passes through them either way.
+was, however much you drew while zoomed. A polygon being placed keeps the grid
+it started on until it ends, and, **Unreleased**, a path until it is ink, and
+Shift with an arrow key moves a picture by a column of the grid shown. **Grid
+size** keeps its range of 2 to 10, and saved symbols are not affected. On a
+symbol you open again, the usual grid follows the ends you placed with Shift, so
+after placing them mostly on points of the finer grid alone it can lie half a
+cell from where it was; the finer grid passes through them either way.
 
 **Help** opens a built-in quick start with an explanation of each guide, the
 grid, drawing, tracing, and saving. Close Help or press Esc to return to the
