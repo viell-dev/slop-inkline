@@ -4,6 +4,7 @@ import { unitsPerPixel } from "../../../src/format/record.ts";
 import { lineBox } from "../../../src/ink/geometry.ts";
 import { loadModules } from "../support/browser.ts";
 import {
+  createSymbol,
   draw,
   markEditor,
   openAtMarker,
@@ -19,6 +20,8 @@ import {
 import { setPageZoom } from "../support/cursor.ts";
 import {
   boxOf,
+  doubleClick,
+  placeOf,
   tops,
   watchTops,
   type Box,
@@ -400,7 +403,11 @@ async function scrollBar(): Promise<ScrollBar> {
     const editor = document.querySelector(".inkline-editor");
     const bar = editor?.querySelector(".inkline-scroll");
     const thumb = bar?.querySelector(".inkline-scroll-thumb");
-    if (!(bar instanceof HTMLElement) || !(thumb instanceof HTMLElement)) {
+    // Obsidian's instanceOf, which holds for an element of a popout window too.
+    if (
+      bar?.instanceOf(HTMLElement) !== true ||
+      thumb?.instanceOf(HTMLElement) !== true
+    ) {
       throw new Error("no scroll bar");
     }
     const box = (element: Element) => {
@@ -1367,6 +1374,73 @@ describe("Zoom", function () {
       expect(seen.at(-1)?.type).toBe("pointerup");
       expect(new Set(seen.map(({ top }) => top)).size).toBe(1);
       expect((await scrollBar()).shown).toBe(true);
+    });
+
+    it("has its thumb in a popout window, which draws without the main one", async function () {
+      // A symbol in a note in a popout, opened there by a double-click, so
+      // that its editor is the popout's.
+      await createSymbol("Wide.ink.png", [400]);
+      await browser.executeObsidian(async ({ app }) => {
+        await app.vault.create("Popout.md", "A ![[Wide.ink.png]] here.");
+      });
+      const main = await browser.getWindowHandle();
+      const before = await browser.getWindowHandles();
+      await browser.executeObsidian(async ({ app }) => {
+        const found = app.vault.getFileByPath("Popout.md");
+        if (found === null) throw new Error("no note");
+        await app.workspace
+          .openPopoutLeaf()
+          .openFile(found, { state: { mode: "source", source: false } });
+      });
+      let popout: string | undefined;
+      await browser.waitUntil(async () => {
+        const handles = await browser.getWindowHandles();
+        popout = handles.find((handle) => !before.includes(handle));
+        return popout !== undefined;
+      });
+      if (popout === undefined) throw new Error("no popout window");
+      try {
+        await browser.switchToWindow(popout);
+        await doubleClick(
+          await placeOf(".markdown-source-view .cm-line img.inkline-symbol"),
+        );
+        await waitForEditor();
+        await settledSurface();
+        // A stroke across the whole of the usual view, which the zoomed view
+        // shows only part of.
+        await draw([
+          [0.02, 0.6],
+          [0.98, 0.6],
+        ]);
+        await browser.keys("z");
+        await waitForStatus("Zoomed in");
+        // Frames of the popout alone, which nothing here asks the main
+        // window to draw: the thumb takes its length from the bar's all the
+        // same (#498).
+        await browser.execute(async () => {
+          for (let count = 0; count < 6; count++) {
+            await new Promise<void>((resolve) => {
+              window.requestAnimationFrame(() => {
+                resolve();
+              });
+            });
+          }
+        });
+        const bar = await scrollBar();
+        const track = bar.track.right - bar.track.left;
+        const thumb = bar.thumb.right - bar.thumb.left;
+        expect(bar.shown).toBe(true);
+        expect(track).toBeGreaterThan(0);
+        expect(thumb).toBeGreaterThan(0);
+        expect(thumb).toBeLessThan(track);
+      } finally {
+        await browser.switchToWindow(main);
+        await browser.executeObsidian(({ app }) => {
+          for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+            if (leaf.view.containerEl.doc !== document) leaf.detach();
+          }
+        });
+      }
     });
 
     it("takes Obsidian's scroll bar colours, in light and dark themes", async function () {

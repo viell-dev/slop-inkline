@@ -136,8 +136,10 @@ class ContentFit {
 
   constructor(area: HTMLTextAreaElement) {
     this.#area = area;
-    // A sidebar made narrower, or a field shown that was hidden.
-    new ResizeObserver(() => {
+    // A sidebar made narrower, or a field shown that was hidden, observed from
+    // the field's own window, which reports as that window draws (#498).
+    const view = area.doc.defaultView ?? window;
+    new view.ResizeObserver(() => {
       if (area.clientWidth !== this.#width) this.fit();
     }).observe(area);
   }
