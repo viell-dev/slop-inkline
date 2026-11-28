@@ -573,6 +573,8 @@ describe("Zoom", function () {
     const handle = await inWindow(0.7, 0.35);
     await clickAt(first);
     await drag(second, handle);
+    // Enter ends the path, and Enter again makes it ink.
+    await browser.keys("Enter");
     await browser.keys("Enter");
     const alone = await strokeAt(1);
     await clickAt(first);
@@ -587,6 +589,7 @@ describe("Zoom", function () {
       inked: true,
     });
     await waitForStatus("Zoomed in");
+    await browser.keys("Enter");
     await browser.keys("Enter");
     expect(await strokeAt(2)).toEqual(alone);
   });
@@ -748,6 +751,8 @@ describe("Zoom", function () {
       );
       // The handle's end, a filled dot, is under the pointer.
       expect(released.inked).toBe(true);
+      // Ended, and made ink.
+      await browser.keys("Enter");
       await browser.keys("Enter");
       expect((await strokeAt(1))?.points.length).toBeGreaterThan(2);
     });

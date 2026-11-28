@@ -9,6 +9,20 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Changed
+
+- A path no longer becomes ink as soon as it ends. Ending it, with Enter or a
+  click on its last point, or closing it on its first point, leaves it waiting,
+  open or closed, with no curve following the pointer, for its points and
+  handles to be dragged until it looks right; a click then places nothing, and
+  nothing else is drawn meanwhile. Enter again, or the new **Finish path**
+  button, makes it ink; the button also does while the path is still being
+  placed. Undo takes back each adjustment, then the ending itself, back to
+  placing the path. Choosing another shape, saving, and **Next** make a waiting
+  path ink as they do one being placed, and Esc drops it. Paths are still saved
+  as ordinary strokes
+  ([#476](https://github.com/viell-dev/slop-inkline/issues/476)).
+
 ### Fixed
 
 - A draft opened as a new symbol, from **Inkline: Recover drafts** or a symbol

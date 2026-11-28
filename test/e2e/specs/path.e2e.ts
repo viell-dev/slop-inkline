@@ -136,6 +136,26 @@ async function drag(from: At, to: At): Promise<void> {
   await draw([from, [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2], to]);
 }
 
+/** What the status line says once a path has ended or closed. */
+function waiting(state: "ended" | "closed"): string {
+  return `Path ${state}: adjust its points and handles; Enter or Finish path makes it ink`;
+}
+
+/** Whether Finish path is on, or "missing" if the editor has no such button. */
+async function finishOn(): Promise<boolean | "missing"> {
+  return browser.execute(() => {
+    const button = document.querySelector('[data-inkline-button="finish"]');
+    return button === null ? "missing" : !button.hasAttribute("disabled");
+  });
+}
+
+/** Waits for Finish path to be on or off. */
+async function waitForFinish(on: boolean): Promise<void> {
+  await browser.waitUntil(async () => (await finishOn()) === on, {
+    timeoutMsg: `Finish path was not ${on ? "on" : "off"}`,
+  });
+}
+
 /**
  * The strokes of the editor's draft, whole, with their sizes and cuts, or
  * none while it keeps no draft.
@@ -324,11 +344,13 @@ describe("Path", function () {
     }, marksColour);
   });
 
-  it("places a curve by its points, shows its controls only while placing it, and saves one stroke along it", async function () {
+  it("places a curve by its points, shows its controls until it is ink, and saves one stroke along it", async function () {
     await openPath();
+    expect(await finishOn()).toBe(false);
     // From low on the left, heading up, round to high on the right, arriving
     // from the left: an arc bowed up and to the left of the line between.
     await drag([0.25, 0.7], [0.25, 0.4]);
+    await waitForFinish(true);
     await drag([0.65, 0.3], [0.8, 0.3]);
     // Nothing is committed while the path is placed.
     expect(await draftNow()).toBe(0);
@@ -351,16 +373,34 @@ describe("Path", function () {
       "the next curve did not follow the pointer after a drag",
       [0.45, 0.85],
     );
-    // A click on the last point ends it.
+    // A click on the last point ends it: no curve follows the pointer, the
+    // controls stay, and it is not ink until Enter.
     await click([0.65, 0.3]);
+    await waitForStatus(waiting("ended"));
+    await hover([0.45, 0.85]);
+    await browser.waitUntil(
+      async () => (await inkShown([0.45, 0.85]))[0] === 0,
+      { timeoutMsg: "a curve still followed the pointer once it ended" },
+    );
+    await waitForMarks([0.25, 0.7], [0.65, 0.3], [0.8, 0.3]);
+    expect(await finishOn()).toBe(true);
+    await saveScreenshot("path-ended", browser.$(".inkline-editor"));
+    expect(await draftNow()).toBe(0);
+    await browser.keys("Enter");
     const [arc] = await draftStrokes(1);
     expect(arc).toMatchObject({ tool: "pen", size: 384 });
     expect(arc).not.toHaveProperty("kind");
     expect(arc).not.toHaveProperty("cut");
     expect(await pressed("path")).toBe("true");
     await browser.waitUntil(async () => (await marksShown()).all === 0, {
-      timeoutMsg: "the controls stayed after the path ended",
+      timeoutMsg: "the controls stayed after the path was ink",
     });
+    await waitForFinish(false);
+    // Its message goes with it.
+    await browser.waitUntil(
+      async () => (await browser.$(".inkline-status").getText()) === "",
+      { timeoutMsg: "the status line still said how to finish the path" },
+    );
     // Its points follow the curve no more than a pixel apart.
     const points = pixels(arc);
     expect(points.length).toBeGreaterThan(200);
@@ -397,6 +437,10 @@ describe("Path", function () {
     // now comes in from below, bowed down from the line.
     await drag([0.5, 0.5], [0.5, 0.85]);
     await saveScreenshot("path-handle-moved", browser.$(".inkline-editor"));
+    // Enter ends it, and Enter again makes it ink.
+    await browser.keys("Enter");
+    await waitForStatus(waiting("ended"));
+    expect(await draftNow()).toBe(0);
     await browser.keys("Enter");
     const [bowed] = await draftStrokes(1);
     const points = pixels(bowed);
@@ -416,22 +460,106 @@ describe("Path", function () {
     // At the eraser's own size, which it keeps apart from the pen's.
     expect(ended).toMatchObject({ tool: "eraser", size: 192 });
     expect(ended).not.toHaveProperty("kind");
-    // Esc drops a path being placed, and the editor stays open.
+    // Esc drops a path being placed, and one that has ended, and the editor
+    // stays open.
     await browser.keys("a");
-    await click([0.3, 0.8], [0.6, 0.8]);
-    await browser.keys("Escape");
-    await waitForStatus("Path dropped");
-    expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
-    expect(await draftStrokes(2)).toHaveLength(2);
-    await browser.waitUntil(async () => (await marksShown()).all === 0, {
-      timeoutMsg: "the dropped path's controls stayed",
-    });
-    // One Undo takes back a whole path once it has ended.
+    for (const ended of [false, true]) {
+      await click([0.3, 0.8], [0.6, 0.8]);
+      if (ended) {
+        await click([0.6, 0.8]);
+        await waitForStatus(waiting("ended"));
+      }
+      await browser.keys("Escape");
+      await waitForStatus("Path dropped");
+      expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
+      expect(await draftStrokes(2)).toHaveLength(2);
+      await browser.waitUntil(async () => (await marksShown()).all === 0, {
+        timeoutMsg: "the dropped path's controls stayed",
+      });
+    }
+    // Another shape chosen once a path has ended makes it ink.
+    await click([0.3, 0.8], [0.6, 0.8], [0.6, 0.8]);
+    await waitForStatus(waiting("ended"));
+    await browser.keys("o");
+    await browser.waitUntil(async () => (await pressed("ellipse")) === "true");
+    const [, , level] = await draftStrokes(3);
+    const along = pixels(level);
+    expect(along.length).toBeGreaterThan(50);
+    expect(along.at(-1)?.y).toBe(along[0]?.y);
+    // One Undo takes back a whole path once it is ink.
     await browser.keys(["Control", "z"]);
-    expect(await draftStrokes(1)).toHaveLength(1);
+    expect(await draftStrokes(2)).toHaveLength(2);
   });
 
-  it("closes on its first point, filled with Toggle fill, and one Undo takes it back", async function () {
+  it("waits once ended to be adjusted, does nothing at a press beside it, and Undo takes back the ending", async function () {
+    await openPath();
+    // Along, and up: two sides of a triangle, open.
+    await click([0.2, 0.6], [0.5, 0.6], [0.5, 0.25]);
+    await browser.keys("Enter");
+    await waitForStatus(waiting("ended"));
+    // Something else said in the status line meanwhile.
+    await browser.keys("t");
+    await waitForStatus("Flat ends is for freehand strokes and paths");
+    // A press away from its points and handles places nothing, and says how
+    // to finish the path again; a drag there draws nothing.
+    await click([0.8, 0.3]);
+    await waitForStatus(waiting("ended"));
+    await draw([
+      [0.85, 0.2],
+      [0.9, 0.5],
+      [0.85, 0.8],
+    ]);
+    // A click on its first point closes nothing, and one on its last ends
+    // nothing more.
+    await click([0.2, 0.6], [0.5, 0.25]);
+    // Its middle point dragged down: the sides follow it.
+    await drag([0.5, 0.6], [0.5, 0.85]);
+    await waitForMarks([0.2, 0.6], [0.5, 0.85], [0.5, 0.25]);
+    await waitForInk("the sides did not follow the point moved", [0.35, 0.725]);
+    // Where a press beside it was, where the drag went, and the side that
+    // closing it would have drawn, nothing shows.
+    expect(await inkShown([0.8, 0.3], [0.9, 0.5], [0.35, 0.425])).toEqual([
+      0, 0, 0,
+    ]);
+    expect((await marksShown([0.8, 0.3], [0.9, 0.5])).near).toEqual([0, 0]);
+    expect(await draftNow()).toBe(0);
+    await saveScreenshot("path-adjusted", browser.$(".inkline-editor"));
+    // Undo takes back the drag, then the ending: the next curve follows the
+    // pointer again, and a click places a point there.
+    await browser.keys(["Control", "z"]);
+    await waitForMarks([0.2, 0.6], [0.5, 0.6], [0.5, 0.25]);
+    await browser.waitUntil(
+      async () => (await inkShown([0.35, 0.725]))[0] === 0,
+      { timeoutMsg: "Undo left the point where it was dragged" },
+    );
+    await waitForStatus(waiting("ended"));
+    await browser.keys(["Control", "z"]);
+    await hover([0.75, 0.25]);
+    await waitForInk(
+      "the next curve did not follow the pointer once the ending was undone",
+      [0.625, 0.25],
+    );
+    await click([0.75, 0.25]);
+    await waitForMarks([0.2, 0.6], [0.5, 0.6], [0.5, 0.25], [0.75, 0.25]);
+    // Mod+S saves it once ended, with all four points.
+    await click([0.75, 0.25]);
+    await waitForStatus(waiting("ended"));
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await browser.waitUntil(async () => (await marksShown()).all === 0, {
+      timeoutMsg: "the controls stayed after the path was saved",
+    });
+    await waitForFinish(false);
+    const [saved] = await savedStrokes();
+    const points = pixels(saved);
+    const first = points[0] ?? { x: 0, y: 0 };
+    const last = points.at(-1) ?? first;
+    // From the left, along, up, and on to the right.
+    expect(last.y).toBeLessThan(first.y - 20);
+    expect(Math.max(...points.map(({ x }) => x))).toBe(last.x);
+  });
+
+  it("closes on its first point, filled with Toggle fill, moves its points once closed, and one Undo takes it back", async function () {
     await openPath();
     await browser.keys("b");
     await browser.waitUntil(async () => (await pressed("fill")) === "true");
@@ -445,8 +573,30 @@ describe("Path", function () {
     await hover([0.3, 0.6]);
     await waitForInk("the close was not shown before the click", [0.45, 0.6]);
     await saveScreenshot("path-closing", browser.$(".inkline-editor"));
+    // Closed, it stays closed and filled wherever the pointer goes, until it
+    // is ink.
     await click([0.3, 0.6]);
+    await waitForStatus(waiting("closed"));
+    await hover([0.9, 0.9]);
+    await waitForInk("the closed path did not stay filled", [0.45, 0.6]);
+    expect(await draftNow()).toBe(0);
+    // Its first point dragged further left, which a closed path keeps the
+    // controls of too, and the button makes it ink.
+    expect((await marksShown([0.2, 0.6])).near).toEqual([0]);
+    expect(await inkShown([0.25, 0.6])).toEqual([0]);
+    await drag([0.3, 0.6], [0.2, 0.6]);
+    await waitForMarks([0.2, 0.6], [0.6, 0.6]);
+    await waitForInk("the filled shape did not follow its point", [0.25, 0.6]);
+    await saveScreenshot("path-closed-adjusted", browser.$(".inkline-editor"));
+    await browser.$('[data-inkline-button="finish"]').click();
     const [inside, line] = await draftStrokes(2);
+    await waitForFinish(false);
+    // The drawing area has the focus back, so its keys work at once.
+    expect(
+      await browser.execute(() =>
+        document.activeElement?.classList.contains("inkline-surface"),
+      ),
+    ).toBe(true);
     expect(inside?.kind).toBe("fill");
     expect(inside?.points).toEqual(line?.points);
     expect(line).not.toHaveProperty("kind");
@@ -466,7 +616,7 @@ describe("Path", function () {
     });
   });
 
-  it("ends with its points on Next, which keeps Path on, and the close button drops one", async function () {
+  it("ends with its points on Next, closed once closed, which keeps Path on, and the close button drops one", async function () {
     await openPath();
     await click([0.3, 0.5]);
     await drag([0.6, 0.5], [0.7, 0.3]);
@@ -477,17 +627,38 @@ describe("Path", function () {
     const [saved] = await savedStrokes();
     expect(saved).not.toHaveProperty("kind");
     expect(pixels(saved).length).toBeGreaterThan(150);
-    // In the next symbol's editor, the close button drops a path being
-    // placed first, and the editor stays open.
-    await click([0.3, 0.5], [0.6, 0.5]);
-    await waitForMarks([0.3, 0.5], [0.6, 0.5]);
-    await browser.$(".inkline-editor .modal-header-button").click();
-    await waitForStatus("Path dropped");
-    expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
-    await browser.waitUntil(async () => (await marksShown()).all === 0, {
-      timeoutMsg: "the dropped path's controls stayed",
-    });
-    expect(await draftNow()).toBe(0);
+    // In the next symbol's editor, a path closed on its first point and
+    // waiting to be made ink is saved closed by Next.
+    await click([0.3, 0.5]);
+    await drag([0.6, 0.5], [0.7, 0.3]);
+    await click([0.3, 0.5]);
+    await waitForStatus(waiting("closed"));
+    await markEditor();
+    await browser.keys(["Control", "Shift", "Enter"]);
+    await waitForNext(2);
+    const record = JSON.parse(await recordOf("002.ink.png")) as {
+      strokes: Stroke[];
+    };
+    const [loop] = record.strokes;
+    expect(record.strokes).toHaveLength(1);
+    expect(loop?.points.slice(-2)).toEqual(loop?.points.slice(0, 2));
+    // In the one after, the close button drops a path being placed, and one
+    // waiting, first, and the editor stays open.
+    for (const ended of [false, true]) {
+      await click([0.3, 0.5], [0.6, 0.5]);
+      if (ended) {
+        await click([0.6, 0.5]);
+        await waitForStatus(waiting("ended"));
+      }
+      await waitForMarks([0.3, 0.5], [0.6, 0.5]);
+      await browser.$(".inkline-editor .modal-header-button").click();
+      await waitForStatus("Path dropped");
+      expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
+      await browser.waitUntil(async () => (await marksShown()).all === 0, {
+        timeoutMsg: "the dropped path's controls stayed",
+      });
+      expect(await draftNow()).toBe(0);
+    }
   });
 
   it("erases along its curve with the eraser, and is plain ink in the symbol opened again", async function () {
@@ -531,6 +702,8 @@ describe("Path", function () {
     });
     await saveScreenshot("path-eraser-placing", browser.$(".inkline-editor"));
     await click([0.65, 0.65]);
+    await waitForStatus(waiting("ended"));
+    await browser.keys("Enter");
     const [, , erased] = await draftStrokes(3);
     expect(erased).toMatchObject({ tool: "eraser", size: 192 });
     expect(erased).not.toHaveProperty("kind");
@@ -555,6 +728,8 @@ describe("Path", function () {
     await click([0.35, 0.65]);
     await waitForMarks([0.35, 0.65]);
     await browser.keys("Enter");
+    await waitForStatus(waiting("ended"));
+    await browser.keys("Enter");
     const again = await draftStrokes(4);
     expect(again.slice(0, 3)).toEqual(strokes);
     expect(pixels(again[3])).toHaveLength(1);
@@ -569,6 +744,8 @@ describe("Path", function () {
     // From high on the left steeply down to the baseline, three quarters
     // down the line box, and a click on that last point again to end it.
     await shiftClick([0.3, 0.3], [0.38, 0.75], [0.38, 0.75]);
+    await waitForStatus(waiting("ended"));
+    await browser.keys("Enter");
     const [legs] = await draftStrokes(1);
     expect(legs).not.toHaveProperty("kind");
     expect(legs?.cut).toEqual({ start: "up", end: "down" });
