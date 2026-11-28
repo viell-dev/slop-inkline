@@ -9,6 +9,31 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+## 1.1.2 - 2026-11-28
+
+This is the third pre-release of the 1.1 line, an alpha of 1.2.0, the next
+public release. Features can still arrive and change in this line until a goal
+for 1.2.0 is agreed. It fixes what a review of 1.1.1 found after it was
+published: a path still being placed or waiting for **Finish path** is now kept
+in the draft, and the close button or a click outside the editor no longer drops
+it; a drawing recovered as a new symbol can no longer be left on another symbol
+by a crash during its first save; and **Zoom**'s scroll bar keeps its thumb
+under the pointer and has a name for screen readers. The owner's
+[test request](https://github.com/viell-dev/slop-inkline/issues/483), which
+1.2.0 waits for, now covers 1.1.2.
+
+Obsidian does not offer pre-releases: it goes on offering 1.0.2 from the
+community plugins. To try 1.1.2, install `inkline-1.1.2.zip` from this release's
+assets by hand, or choose version `1.1.2` in BRAT, as
+[the install guide](https://viell-dev.github.io/slop-inkline/install) says.
+Where Inkline is installed already, copy only `main.js`, `manifest.json`, and
+`styles.css` into its folder, and keep `data.json`, which holds your settings.
+BRAT's **latest** choice moves to 1.1.2 by itself. To go back, install 1.1.1 or
+1.0.2 the same way.
+
+The file format is unchanged: a symbol saved with 1.1.2 opens in 1.0.0 to 1.1.1,
+and drafts keep the layout that every release from 0.9.2 on uses.
+
 ### Fixed
 
 - A draft opened as a new symbol, from **Inkline: Recover drafts** or a symbol
