@@ -1076,15 +1076,15 @@ function claimed(claim: Claim): CreatedFile {
  * Until the first save has made the new symbol's file, the editor's draft is
  * for the symbol the old draft was kept for, so that a crash, during that save
  * too, leaves it where it was found, and the editor keeps it in that draft's
- * place; from then on it is that file's, kept for it at once (#487). The draft
- * of a new symbol's draft names the file its first save is making before it
- * writes, and what it writes, as a new symbol's does, so that restoring it
- * after a save cut short finishes that save with that file, while it holds
- * that; a symbol's draft names no such file, as {@link recoveredTarget} says.
- * In the editor, a retry writes over a file that its first save left, if it
- * holds what this wrote, rather than make another. A save that fails having
- * left nothing of its own there, as one refused because another symbol came
- * to the path, forgets that path.
+ * place; from then on it is that file's, kept for it at once (#487). Opened on
+ * a new symbol's draft, the editor's draft also names the file its first save
+ * is making, before it writes, and what it writes, as a new symbol's does, so
+ * that restoring it after a save cut short finishes that save with that file
+ * only while it holds that; opened on a symbol's draft, it names no such file,
+ * as {@link recoveredTarget} says. In the editor, a retry writes over a file
+ * that its first save left, if it holds what this wrote, rather than make
+ * another. A save that fails having left nothing of its own there, as one
+ * refused because another symbol came to the path, forgets that path.
  *
  * The first save's file of a new symbol's draft is claimed only once the
  * draft is restored, as a new symbol's `restored` does, so that an editor
@@ -1188,8 +1188,9 @@ function recoverDraft(host: EditorHost, found: AsNewSymbol): void {
           choice,
           (at, left) => {
             // As a new symbol's first save keeps what a write cut short left.
-            // The draft of a new symbol's draft names it at once; a symbol's
-            // stays its old symbol's until the file is made.
+            // Opened on a new symbol's draft, the editor's draft names it at
+            // once; on a symbol's, it stays the old one's until the file is
+            // made.
             claim =
               left === undefined
                 ? { path: at, fingerprint }
@@ -1201,12 +1202,12 @@ function recoverDraft(host: EditorHost, found: AsNewSymbol): void {
         );
       } catch (error) {
         // A save that left nothing of its own at the path it claimed, as one
-        // refused because another symbol came there, forgets that path, which
-        // the next save would otherwise look at first, and a new symbol's
-        // draft name, and goes back to the file a new symbol's draft's first
-        // save made, if any (#437). A part it left is in the claim, for the
-        // next save, and so is the whole file its copy made, which Obsidian
-        // has not listed.
+        // refused because another symbol came there, forgets that path, so
+        // that the next save does not look there first, nor a new symbol's
+        // draft name it, and goes back to the claim before it, as of the file
+        // that a new symbol's draft's first save made (#437). A part it left
+        // is in the claim, for the next save, and so is the whole file its copy
+        // made, which Obsidian has not listed.
         if (
           claim !== before &&
           claim?.previous === undefined &&
@@ -1220,7 +1221,8 @@ function recoverDraft(host: EditorHost, found: AsNewSymbol): void {
       holds(fingerprint);
       // The draft is the file's from now on, which holds what this wrote, so
       // that a crash before the save ends leaves it there rather than on the
-      // old symbol, which would make this symbol a second time.
+      // old symbol, where opening it as a new symbol again would make this
+      // symbol a second time.
       keepDraft();
       await host.texts.refresh(made);
       return true;
