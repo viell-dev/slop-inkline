@@ -391,9 +391,15 @@ export class InkEditorModal extends Modal {
         // Only a fresh press ends a shape or makes a waiting path ink.
         if (repeats) return true;
         // A path being placed waits, once it ends, to be adjusted; a second
-        // Enter makes it ink, as a polygon's one does.
-        if (this.#session.endPath()) this.#pathWaits();
-        else this.#endPlacing();
+        // Enter makes it ink, as a polygon's one does. Ending it takes a drag
+        // still held as it shows, so the draft is kept again at once, as
+        // letting go of the drag would have kept it.
+        if (this.#session.endPath()) {
+          this.#changed();
+          this.#pathWaits();
+        } else {
+          this.#endPlacing();
+        }
         return true;
       },
       arrowKey: (name, shift) => this.#arrowKey(name, shift),

@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { Key } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
 import type { Stroke } from "../../../src/format/record.ts";
 import { loadModules } from "../support/browser.ts";
@@ -687,6 +688,60 @@ describe("Path", function () {
       return points.map(({ x, y }) => ({ x: x - first.x, y: y - first.y }));
     };
     expect(shape(saved)).toEqual(shape(kept));
+  });
+
+  it("keeps a drag that Enter ends in the draft before the pointer is let go", async function () {
+    await openPath();
+    await click([0.2, 0.6], [0.6, 0.6]);
+    // Where a place on the surface is in the window, for raw actions, which
+    // keep the button down between calls until they are released.
+    const rect = await browser.execute(() => {
+      const canvas = document.querySelector(".inkline-editor .inkline-surface");
+      if (canvas === null) throw new Error("no surface");
+      const { left, top, width, height } = canvas.getBoundingClientRect();
+      return { left, top, width, height };
+    });
+    const at = ([x, y]: At) => ({
+      x: Math.round(rect.left + x * rect.width),
+      y: Math.round(rect.top + y * rect.height),
+      origin: "viewport" as const,
+    });
+    try {
+      // The last point pressed and dragged up, and Enter while it is held.
+      await browser.performActions([
+        {
+          type: "pointer",
+          id: "mouse",
+          parameters: { pointerType: "mouse" },
+          actions: [
+            { type: "pointerMove", duration: 0, ...at([0.6, 0.6]) },
+            { type: "pointerDown", button: 0 },
+            { type: "pointerMove", duration: 20, ...at([0.6, 0.45]) },
+            { type: "pointerMove", duration: 20, ...at([0.6, 0.3]) },
+          ],
+        },
+      ]);
+      await browser.performActions([
+        {
+          type: "key",
+          id: "keyboard",
+          actions: [
+            { type: "keyDown", value: Key.Enter },
+            { type: "keyUp", value: Key.Enter },
+          ],
+        },
+      ]);
+      await waitForStatus(waiting("ended"));
+      // Before the pointer is let go, the draft holds the path as dragged,
+      // so that a crash now keeps what shows.
+      const [kept] = await draftStrokes(1);
+      const points = pixels(kept);
+      const first = points[0] ?? { x: 0, y: 0 };
+      const last = points.at(-1) ?? first;
+      expect(last.y).toBeLessThan(first.y - 20);
+    } finally {
+      await browser.releaseActions();
+    }
   });
 
   it("waits once ended to be adjusted, does nothing at a press beside it, and Undo takes back the ending", async function () {
